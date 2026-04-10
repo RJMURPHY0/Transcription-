@@ -90,14 +90,8 @@ export default function GlobalChatWidget() {
         >
           {/* Header */}
           <div className="px-4 py-3 border-b border-surface-border flex items-center gap-3 flex-shrink-0 bg-surface-raised">
-            <div className="w-9 h-9 rounded-full btn-brand flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-              </svg>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-ftc-gray leading-tight">FTC Chat Bot</p>
-              <p className="text-[10px] text-ftc-mid">Search across all meetings</p>
+            <div className="flex-1 min-w-0" style={{ display: 'flex', alignItems: 'center' }}>
+              <img src="/chatbot-logo.png" alt="FTC Chat Bot" style={{ height: '36px', objectFit: 'contain' }} />
             </div>
             {messages.length > 0 && (
               <button

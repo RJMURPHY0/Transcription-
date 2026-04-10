@@ -38,9 +38,8 @@ export default async function Home() {
       {/* Nav */}
       <header className="sticky top-0 z-20 border-b border-surface-border bg-surface/80 backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="logo-ftc text-sm font-black text-brand">FTC</span>
-            <span className="logo-transcribe text-sm font-medium text-ftc-mid">TRANSCRIBE</span>
+          <div className="flex items-center h-8">
+            <img src="/logo.png" alt="FTC Transcribe" className="h-full object-contain" />
           </div>
           <Link href="/record" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white touch-manipulation">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">

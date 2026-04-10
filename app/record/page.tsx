@@ -114,8 +114,8 @@ export default function RecordPage() {
             Back
           </Link>
           <div className="flex items-center gap-2">
-            <FTCLogoMark className="w-6 h-6 logo-glow" />
-            <span className="font-semibold text-sm text-ftc-gray">New Recording</span>
+            <img src="/logo.png" alt="FTC Transcribe" className="h-6 object-contain" />
+            <span className="font-semibold text-sm text-ftc-gray border-l border-surface-border pl-2">New Recording</span>
           </div>
         </div>
       </header>

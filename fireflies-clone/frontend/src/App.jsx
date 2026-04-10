@@ -207,6 +207,11 @@ function App() {
           <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>+ Capture</button>
         </div>
       </div>
+
+      {/* FLOATING CHATBOT WIDGET */}
+      <div style={{ position: 'fixed', bottom: '30px', right: '30px', zIndex: 1000, cursor: 'pointer', background: 'var(--bg-card)', padding: '10px', borderRadius: '50%', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+        <img src="/chatbot-logo.png" alt="Chatbot Support" style={{ width: '50px', height: '50px', objectFit: 'contain' }} />
+      </div>
     </>
   )
 }
