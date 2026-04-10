@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import DeleteButton from './DeleteButton';
 import EditableTitle from './EditableTitle';
+import ChatPanel from './ChatPanel';
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -186,6 +187,13 @@ export default async function RecordingPage({ params }: { params: { id: string }
           </div>
 
         </div>
+
+        {/* Chat panel — only when transcript is ready */}
+        {recording.transcript && (
+          <div className="mt-4">
+            <ChatPanel recordingId={recording.id} />
+          </div>
+        )}
       </main>
     </div>
   );
