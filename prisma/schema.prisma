@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Recording {
+  id         String   @id @default(cuid())
+  title      String   @default("")
+  createdAt  DateTime @default(now())
+  duration   Int      @default(0)
+  fileSize   Int      @default(0)
+  mimeType   String   @default("")
+  audioPath  String   @default("")
+  status     String   @default("processing")
+
+  transcript Transcript?
+  summary    Summary?
+}
+
+model Transcript {
+  id          String    @id @default(cuid())
+  recordingId String    @unique
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  fullText    String
+  segments    String
+  createdAt   DateTime  @default(now())
+}
+
+model Summary {
+  id          String    @id @default(cuid())
+  recordingId String    @unique
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  overview    String
+  keyPoints   String
+  actionItems String
+  decisions   String
+  createdAt   DateTime  @default(now())
+}

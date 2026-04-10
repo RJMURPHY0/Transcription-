@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+fireflies-clone/backend/venv/
+
+# Next.js build output
+.next/
+out/
+
+# Database files
+*.db
+*.db-journal
+prisma/migrations/
+
+# Environment (contains API keys — never commit)
+.env
+.env.local
+.env*.local
+
+# Uploads
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Claude Code local settings
+.claude/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

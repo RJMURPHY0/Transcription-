@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface text-ftc-gray antialiased;
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2e2e2c; border-radius: 99px; }
+}
+
+/* ── FTC brand gradients ── */
+.btn-brand {
+  background: linear-gradient(135deg, #f39200, #d97f00);
+  box-shadow: 0 4px 20px rgba(243, 146, 0, 0.28);
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.btn-brand:hover {
+  background: linear-gradient(135deg, #f5a830, #f39200);
+  box-shadow: 0 4px 32px rgba(243, 146, 0, 0.45);
+}
+.btn-brand:active { transform: scale(0.98); }
+
+/* Record button states */
+.btn-record-idle {
+  background: radial-gradient(circle at 40% 35%, #f5a830, #d97f00);
+  box-shadow: 0 0 36px rgba(243, 146, 0, 0.38), 0 8px 28px rgba(243, 146, 0, 0.25);
+}
+.btn-record-active {
+  background: radial-gradient(circle at 40% 35%, #f87171, #dc2626);
+  box-shadow: 0 0 36px rgba(239, 68, 68, 0.38), 0 8px 28px rgba(239, 68, 68, 0.25);
+}
+.btn-record-processing {
+  background: #222221;
+}
+
+/* Logo glow */
+.logo-glow {
+  box-shadow: 0 0 14px rgba(243, 146, 0, 0.4), 0 0 28px rgba(243, 146, 0, 0.15);
+}
+
+/* ── Pulse rings (recording state) ── */
+@keyframes pulse-ring {
+  0%   { transform: scale(1);    opacity: 0.65; }
+  100% { transform: scale(1.7);  opacity: 0; }
+}
+.pulse-ring       { animation: pulse-ring 1.6s ease-out infinite; }
+.pulse-ring-delay { animation: pulse-ring 1.6s ease-out 0.65s infinite; }
+
+/* ── Waveform bars ── */
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.3); }
+  50%       { transform: scaleY(1); }
+}
+.wave-bar {
+  transform-origin: bottom;
+  animation: wave 0.9s ease-in-out infinite;
+  border-radius: 9999px;
+}
+
+/* ── Safe area bottom ── */
+.pb-safe { padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+
+/* ── Timer display ── */
+.timer-display { letter-spacing: -2px; }
+
+/* ── Logo text tracking ── */
+.logo-ftc        { letter-spacing: 0.08em; }
+.logo-transcribe { letter-spacing: 0.15em; }
+
+/* ── Wave bar with CSS-variable delay (avoids inline style on dynamic values) ── */
+.wave-bar-dynamic {
+  animation: wave 0.9s ease-in-out infinite;
+  animation-delay: var(--wave-delay, 0s);
+  transform-origin: bottom;
+  border-radius: 9999px;
+}
+
+/* ── Two-column transcript layout ── */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 1024px) {
+  .detail-grid {
+    grid-template-columns: 3fr 2fr;
+    align-items: start;
+  }
+  .transcript-panel {
+    position: sticky;
+    top: 5rem;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+  }
+}
