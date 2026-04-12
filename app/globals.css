@@ -79,13 +79,25 @@
 .logo-ftc        { letter-spacing: 0.08em; }
 .logo-transcribe { letter-spacing: 0.15em; }
 
-/* ── Wave bar with CSS-variable delay (avoids inline style on dynamic values) ── */
+/* ── Wave bars: delays via nth-child so no inline styles needed ── */
 .wave-bar-dynamic {
   animation: wave 0.9s ease-in-out infinite;
-  animation-delay: var(--wave-delay, 0s);
   transform-origin: bottom;
   border-radius: 9999px;
 }
+.wave-bar-dynamic:nth-child(1)  { animation-delay: 0.00s; }
+.wave-bar-dynamic:nth-child(2)  { animation-delay: 0.07s; }
+.wave-bar-dynamic:nth-child(3)  { animation-delay: 0.14s; }
+.wave-bar-dynamic:nth-child(4)  { animation-delay: 0.21s; }
+.wave-bar-dynamic:nth-child(5)  { animation-delay: 0.28s; }
+.wave-bar-dynamic:nth-child(6)  { animation-delay: 0.35s; }
+.wave-bar-dynamic:nth-child(7)  { animation-delay: 0.42s; }
+.wave-bar-dynamic:nth-child(8)  { animation-delay: 0.49s; }
+.wave-bar-dynamic:nth-child(9)  { animation-delay: 0.56s; }
+.wave-bar-dynamic:nth-child(10) { animation-delay: 0.63s; }
+.wave-bar-dynamic:nth-child(11) { animation-delay: 0.70s; }
+.wave-bar-dynamic:nth-child(12) { animation-delay: 0.77s; }
+.wave-bar-dynamic:nth-child(13) { animation-delay: 0.84s; }
 
 /* ── Chat panel fixed height (non-fullscreen) ── */
 .chat-panel-default-height { height: 520px; }

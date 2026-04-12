@@ -3,9 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { FTCLogoMark } from '@/components/FTCLogo';
 
 type State = 'idle' | 'recording' | 'processing' | 'error';
+
+// Auto-rotate every 2 minutes — keeps each chunk well within file size & timeout limits
+const CHUNK_MS = 2 * 60 * 1000;
 
 function formatTime(s: number) {
   const h = Math.floor(s / 3600);
@@ -26,13 +28,24 @@ export default function RecordPage() {
   const [state, setState] = useState<State>('idle');
   const [seconds, setSeconds] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
+  const [chunksTranscribed, setChunksTranscribed] = useState(0);
+  const [statusMsg, setStatusMsg] = useState('');
 
   const router = useRouter();
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mimeRef = useRef('audio/webm');
 
+  // Persistent refs (survive re-renders without causing them)
+  const streamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunkBlobsRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mimeRef = useRef('audio/webm');
+  const recordingIdRef = useRef<string | null>(null);
+  const timeOffsetRef = useRef(0);     // cumulative seconds transcribed so far
+  const chunkStartRef = useRef(0);     // Date.now() when current recorder started
+  const isActiveRef = useRef(false);   // false once user hits stop
+
+  // Timer
   useEffect(() => {
     if (state === 'recording') {
       timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -42,49 +55,134 @@ export default function RecordPage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [state]);
 
-  const upload = useCallback(async (blob: Blob) => {
+  const uploadChunk = useCallback(async (blob: Blob, offset: number) => {
+    const id = recordingIdRef.current;
+    if (!id) throw new Error('No recording ID');
+
     const ext = mimeRef.current.includes('mp4') ? 'mp4' : 'webm';
     const fd = new FormData();
-    fd.append('audio', blob, `recording.${ext}`);
-    try {
-      const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error ?? `Server error ${res.status}`);
-      router.push(`/recordings/${json.id}`);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Upload failed. Please try again.');
-      setState('error');
+    fd.append('audio', blob, `chunk.${ext}`);
+    fd.append('offset', String(offset));
+
+    const res = await fetch(`/api/recordings/${id}/append-chunk`, { method: 'POST', body: fd });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error ?? `Server error ${res.status}`);
     }
-  }, [router]);
+  }, []);
+
+  // Starts (or restarts) a MediaRecorder on the existing stream
+  const startRecorder = useCallback((stream: MediaStream, mime: string) => {
+    const mr = new MediaRecorder(stream, { mimeType: mime });
+    recorderRef.current = mr;
+    chunkBlobsRef.current = [];
+    chunkStartRef.current = Date.now();
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) chunkBlobsRef.current.push(e.data);
+    };
+
+    mr.onstop = async () => {
+      const blob = new Blob(chunkBlobsRef.current, { type: mime });
+      chunkBlobsRef.current = [];
+      const offset = timeOffsetRef.current;
+      // Measure actual duration of this chunk
+      const chunkDuration = (Date.now() - chunkStartRef.current) / 1000;
+      timeOffsetRef.current += chunkDuration;
+
+      try {
+        await uploadChunk(blob, offset);
+
+        if (isActiveRef.current) {
+          // User is still recording — restart and schedule next rotation
+          setChunksTranscribed((n) => n + 1);
+          startRecorder(stream, mime);
+          chunkTimerRef.current = setTimeout(() => {
+            if (recorderRef.current?.state === 'recording') {
+              recorderRef.current.stop();
+            }
+          }, CHUNK_MS);
+        } else {
+          // User stopped — upload was the final chunk, now finalize
+          const id = recordingIdRef.current;
+          if (!id) return;
+
+          setStatusMsg('Identifying speakers…');
+          const finRes = await fetch(`/api/recordings/${id}/finalize`, { method: 'POST' });
+          if (!finRes.ok) {
+            const data = await finRes.json().catch(() => ({})) as { error?: string };
+            throw new Error(data.error ?? 'Finalization failed');
+          }
+
+          router.push(`/recordings/${id}`);
+        }
+      } catch (err) {
+        isActiveRef.current = false;
+        setErrorMsg(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+        setState('error');
+      }
+    };
+
+    mr.start(500);
+  }, [uploadChunk, router]);
 
   const start = useCallback(async () => {
     setErrorMsg('');
     setSeconds(0);
+    setChunksTranscribed(0);
+    setStatusMsg('');
+
     try {
+      // Create the recording in the DB first so we have an ID
+      const createRes = await fetch('/api/recordings/create', { method: 'POST' });
+      const createData = await createRes.json() as { id?: string; error?: string };
+      if (!createRes.ok || !createData.id) throw new Error(createData.error ?? 'Could not create recording');
+      recordingIdRef.current = createData.id;
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
       const mime = getBestMime();
       mimeRef.current = mime;
-      const mr = new MediaRecorder(stream, { mimeType: mime });
-      mediaRecorderRef.current = mr;
-      chunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        await upload(new Blob(chunksRef.current, { type: mime }));
-      };
-      mr.start(500);
+      timeOffsetRef.current = 0;
+      isActiveRef.current = true;
+
+      startRecorder(stream, mime);
+
+      // Schedule first chunk rotation
+      chunkTimerRef.current = setTimeout(() => {
+        if (recorderRef.current?.state === 'recording') {
+          recorderRef.current.stop();
+        }
+      }, CHUNK_MS);
+
       setState('recording');
-    } catch {
-      setErrorMsg('Microphone access denied. Allow mic access and try again.');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Microphone access denied. Allow mic access and try again.');
       setState('error');
     }
-  }, [upload]);
+  }, [startRecorder]);
 
   const stop = useCallback(() => {
-    if (mediaRecorderRef.current && state === 'recording') {
-      mediaRecorderRef.current.stop();
-      setState('processing');
+    if (state !== 'recording') return;
+
+    isActiveRef.current = false;
+    setState('processing');
+    setStatusMsg('Transcribing final segment…');
+
+    // Cancel the next scheduled rotation
+    if (chunkTimerRef.current) {
+      clearTimeout(chunkTimerRef.current);
+      chunkTimerRef.current = null;
     }
+
+    // Stop the recorder — onstop will upload the final chunk then finalize
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop();
+    }
+
+    // Release mic
+    streamRef.current?.getTracks().forEach((t) => t.stop());
   }, [state]);
 
   const handleClick = () => {
@@ -93,11 +191,9 @@ export default function RecordPage() {
   };
 
   const btnClass =
-    state === 'recording' ? 'btn-record-active' :
+    state === 'recording'  ? 'btn-record-active' :
     state === 'processing' ? 'btn-record-processing' :
     'btn-record-idle';
-
-  const pulseColor = 'bg-red-500/15';
 
   return (
     <div className="min-h-screen flex flex-col bg-surface">
@@ -145,7 +241,6 @@ export default function RecordPage() {
               <div
                 key={i}
                 className="w-1.5 h-full wave-bar-dynamic bg-brand"
-                style={{ '--wave-delay': `${i * 0.07}s` } as React.CSSProperties}
               />
             ) : (
               <div key={i} className="w-1.5 h-1 rounded-full bg-surface-border" />
@@ -157,8 +252,8 @@ export default function RecordPage() {
         <div className="relative flex items-center justify-center">
           {state === 'recording' && (
             <>
-              <div className={`absolute rounded-full w-36 h-36 pulse-ring ${pulseColor}`} />
-              <div className={`absolute rounded-full w-36 h-36 pulse-ring-delay ${pulseColor}`} />
+              <div className="absolute rounded-full w-36 h-36 pulse-ring bg-red-500/15" />
+              <div className="absolute rounded-full w-36 h-36 pulse-ring-delay bg-red-500/15" />
             </>
           )}
           <button
@@ -184,14 +279,24 @@ export default function RecordPage() {
         {/* Status */}
         <div className="text-center space-y-1.5 max-w-xs">
           <p className="font-medium text-ftc-gray">
-            {state === 'idle'      && 'Tap to start recording'}
-            {state === 'recording' && 'Recording — tap to stop'}
-            {state === 'processing'&& 'Transcribing with AI…'}
-            {state === 'error'     && 'Something went wrong'}
+            {state === 'idle'       && 'Tap to start recording'}
+            {state === 'recording'  && 'Recording — tap to stop'}
+            {state === 'processing' && (statusMsg || 'Finishing up…')}
+            {state === 'error'      && 'Something went wrong'}
           </p>
-          {state === 'processing' && (
-            <p className="text-sm text-ftc-mid">This may take 20–30 seconds</p>
+
+          {state === 'recording' && chunksTranscribed > 0 && (
+            <p className="text-sm text-ftc-mid">
+              {chunksTranscribed * 2} min transcribed and saved
+            </p>
           )}
+
+          {state === 'processing' && (
+            <p className="text-sm text-ftc-mid">
+              This may take up to 30 seconds
+            </p>
+          )}
+
           {state === 'error' && errorMsg && (
             <p className="text-sm text-red-400">{errorMsg}</p>
           )}
@@ -204,7 +309,7 @@ export default function RecordPage() {
 
         {state === 'idle' && (
           <p className="text-xs text-center max-w-xs text-surface-muted">
-            Works best in quiet environments. Supports meetings, interviews, and lectures.
+            Works for meetings of any length. Audio is processed in 2-minute segments as you record.
           </p>
         )}
       </main>
