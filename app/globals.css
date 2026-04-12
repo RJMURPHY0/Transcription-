@@ -87,6 +87,12 @@
   border-radius: 9999px;
 }
 
+/* ── Chat panel fixed height (non-fullscreen) ── */
+.chat-panel-default-height { height: 520px; }
+.bounce-delay-0   { animation-delay: 0ms; }
+.bounce-delay-120 { animation-delay: 120ms; }
+.bounce-delay-240 { animation-delay: 240ms; }
+
 /* ── Three-column layout: chat | notes | transcript ── */
 .detail-grid {
   display: grid;

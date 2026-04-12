@@ -68,9 +68,18 @@ export default function ChatPanel({ recordingId }: { recordingId: string }) {
   };
 
   const panel = (
-    <div className={`rounded-2xl border border-surface-border bg-surface-card flex flex-col ${
-      fullscreen ? 'fixed inset-4 z-50 shadow-2xl' : ''
-    }`} style={fullscreen ? undefined : { height: '520px' }}>
+    <>
+      {/* Backdrop — blocks transcript + floating button when fullscreen */}
+      {fullscreen && (
+        <div
+          className="fixed inset-0 z-[55] bg-black/70"
+          onClick={() => setFullscreen(false)}
+        />
+      )}
+
+      <div className={`rounded-2xl border border-surface-border bg-surface-card flex flex-col ${
+        fullscreen ? 'fixed inset-4 z-[60] shadow-2xl' : 'chat-panel-default-height'
+      }`}>
 
       {/* Header */}
       <div className="px-5 py-3.5 border-b border-surface-border flex items-center gap-2.5 flex-shrink-0">
@@ -88,7 +97,7 @@ export default function ChatPanel({ recordingId }: { recordingId: string }) {
               Clear
             </button>
           )}
-          {/* Fullscreen toggle */}
+          {/* Expand / collapse */}
           <button
             type="button"
             onClick={() => setFullscreen((f) => !f)}
@@ -105,6 +114,19 @@ export default function ChatPanel({ recordingId }: { recordingId: string }) {
               </svg>
             )}
           </button>
+          {/* Close (only visible in fullscreen) */}
+          {fullscreen && (
+            <button
+              type="button"
+              onClick={() => setFullscreen(false)}
+              className="text-ftc-mid hover:text-ftc-gray transition-colors"
+              aria-label="Close fullscreen"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
@@ -163,9 +185,9 @@ export default function ChatPanel({ recordingId }: { recordingId: string }) {
               <span className="text-[9px] font-bold text-brand">AI</span>
             </div>
             <div className="bg-surface-raised border border-surface-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce" style={{ animationDelay: '120ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce" style={{ animationDelay: '240ms' }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce bounce-delay-0" />
+              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce bounce-delay-120" />
+              <div className="w-1.5 h-1.5 rounded-full bg-ftc-mid animate-bounce bounce-delay-240" />
             </div>
           </div>
         )}
@@ -203,6 +225,7 @@ export default function ChatPanel({ recordingId }: { recordingId: string }) {
         </p>
       </div>
     </div>
+    </>
   );
 
   return panel;
