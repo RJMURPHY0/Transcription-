@@ -92,10 +92,7 @@ export async function transcribeAudio(filePath: string): Promise<{ text: string;
 }
 
 export async function diarizeSegments(rawSegments: RawSegment[]): Promise<TranscriptSegment[]> {
-  // No segments (mock mode or very short audio) — return a single speaker block
-  if (!rawSegments.length) {
-    return [];
-  }
+  if (!rawSegments.length) return [];
 
   // Without Claude, label everything Speaker 1
   if (isMockAnthropic || !anthropic) {
@@ -103,30 +100,24 @@ export async function diarizeSegments(rawSegments: RawSegment[]): Promise<Transc
   }
 
   const segmentList = rawSegments
-    .map((s, i) => `[${i}] ${formatTime(s.start)}-${formatTime(s.end)}: ${s.text.trim()}`)
+    .map((s, i) => `[${i}] ${formatTime(s.start)}: ${s.text.trim()}`)
     .join('\n');
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
+    max_tokens: 2048,
     messages: [
       {
         role: 'user',
-        content: `You are analysing timestamped segments from a meeting transcript. Your job is to detect speaker changes and assign labels.
+        content: `Identify speaker changes in this meeting transcript. Assign "Speaker 1", "Speaker 2", etc. in order of first appearance.
 
-Rules:
-- Label speakers "Speaker 1", "Speaker 2", "Speaker 3", etc. in the order they first appear
-- Detect speaker changes from: question/answer patterns, topic shifts, pronoun switches, greetings/responses
-- If there is clearly only one speaker throughout, use only "Speaker 1"
-- You may merge consecutive segments from the same speaker into one entry
-- Preserve the original start/end timestamps accurately
-- Return ONLY a valid JSON array, no explanation
+Return ONLY a JSON array — one object per segment index — mapping each index to a speaker label.
 
 Segments:
 ${segmentList}
 
 Return format:
-[{"speaker":"Speaker 1","start":0.0,"end":4.2,"text":"..."},...]`,
+[{"index":0,"speaker":"Speaker 1"},{"index":1,"speaker":"Speaker 2"},...]`,
       },
     ],
   });
@@ -137,9 +128,14 @@ Return format:
   try {
     const jsonMatch = content.text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error('No JSON array in response');
-    return JSON.parse(jsonMatch[0]) as TranscriptSegment[];
+    const mappings = JSON.parse(jsonMatch[0]) as { index: number; speaker: string }[];
+
+    // Apply speaker labels to original segments — timestamps are always from Whisper, not Claude
+    return rawSegments.map((s, i) => {
+      const mapping = mappings.find((m) => m.index === i);
+      return { ...s, speaker: mapping?.speaker ?? 'Speaker 1' };
+    });
   } catch {
-    // Fallback: return raw segments all as Speaker 1
     return rawSegments.map((s) => ({ ...s, speaker: 'Speaker 1' }));
   }
 }
