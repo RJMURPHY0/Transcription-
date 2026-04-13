@@ -140,6 +140,34 @@ Return format:
   }
 }
 
+export async function generateTitle(transcript: string): Promise<string | null> {
+  if (isMockAnthropic || !anthropic || !transcript.trim()) return null;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 24,
+      messages: [
+        {
+          role: 'user',
+          content: `Write a 3-4 word meeting title. Return ONLY the title — no quotes, no punctuation at the end.
+
+Good examples: "Q3 Budget Review", "New Hire Onboarding", "Product Roadmap Planning", "Weekly Team Standup", "Client Discovery Call"
+
+Transcript excerpt:
+${transcript.slice(0, 600)}`,
+        },
+      ],
+    });
+    const text = message.content[0]?.type === 'text' ? message.content[0].text.trim() : null;
+    // Reject anything that looks too long or malformed
+    if (!text || text.length > 60 || text.includes('\n')) return null;
+    return text;
+  } catch {
+    return null;
+  }
+}
+
 export async function analyzeTranscript(transcript: string): Promise<AnalysisResult> {
   if (isMockAnthropic || !anthropic) {
     return {

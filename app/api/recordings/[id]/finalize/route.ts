@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { diarizeSegments, analyzeTranscript } from '@/lib/ai';
+import { diarizeSegments, analyzeTranscript, generateTitle } from '@/lib/ai';
 import type { RawSegment } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const CUID_RE = /^c[a-z0-9]{20,}$/;
+
 export async function POST(
   _request: NextRequest,
   { params }: { params: { id: string } },
 ) {
+  if (!CUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'Invalid recording ID.' }, { status: 400 });
+  }
+
   try {
     const transcript = await prisma.transcript.findUnique({
       where: { recordingId: params.id },
@@ -21,19 +27,25 @@ export async function POST(
 
     const rawSegments: RawSegment[] = JSON.parse(transcript.segments);
 
-    // Run diarization (assign speaker labels)
-    const diarized = await diarizeSegments(rawSegments);
+    // Run all three AI calls in parallel
+    const [diarized, analysis, shortTitle] = await Promise.all([
+      diarizeSegments(rawSegments),
+      analyzeTranscript(transcript.fullText),
+      generateTitle(transcript.fullText),
+    ]);
 
-    // Run AI analysis on the full assembled text
-    const analysis = await analyzeTranscript(transcript.fullText);
+    // Build title: "Q3 Budget Review – 13 Apr 2026"
+    const dateStr = new Date().toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    });
+    const title = shortTitle ? `${shortTitle} – ${dateStr}` : null;
 
-    // Save diarized segments back to transcript
+    // Persist everything
     await prisma.transcript.update({
       where: { recordingId: params.id },
       data: { segments: JSON.stringify(diarized) },
     });
 
-    // Save summary
     await prisma.summary.upsert({
       where: { recordingId: params.id },
       create: {
@@ -51,21 +63,18 @@ export async function POST(
       },
     });
 
-    // Mark recording as completed
     await prisma.recording.update({
       where: { id: params.id },
-      data: { status: 'completed' },
+      data: { status: 'completed', ...(title ? { title } : {}) },
     });
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Finalization failed.';
     console.error('[finalize] Error:', error);
-    // Mark as failed so it doesn't hang
     await prisma.recording.update({
       where: { id: params.id },
       data: { status: 'failed' },
     }).catch(() => {});
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: 'Finalization failed.' }, { status: 500 });
   }
 }
