@@ -6,10 +6,6 @@ export const metadata: Metadata = {
   title: 'FTC Transcribe – AI Meeting Notes',
   description: 'Record any conversation and get an instant transcript, summary, and action items powered by AI.',
   manifest: '/manifest.json',
-  icons: {
-    apple: [{ url: '/apple-touch-icon.png?v=3', sizes: '180x180', type: 'image/png' }],
-    icon: [{ url: '/icon-512.png?v=3', sizes: '512x512', type: 'image/png' }],
-  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
@@ -29,6 +25,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=4" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=4" />
+      </head>
       <body className="min-h-screen">
         {children}
         <GlobalChatWidget />
