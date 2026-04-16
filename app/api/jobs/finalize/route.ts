@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { finalizeRecording } from '@/lib/finalize-recording';
+import { finalizeRecording, enqueueFinalizeJob } from '@/lib/finalize-recording';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -15,15 +15,29 @@ function isAuthorized(req: NextRequest): boolean {
 }
 
 async function runWorker() {
-  const candidates = await prisma.recording.findMany({
-    where: {
-      status: { in: ['uploading', 'processing', 'failed'] },
-      chunks: { some: {} },
-    },
-    orderBy: { createdAt: 'asc' },
-    take: MAX_RECORDINGS_PER_RUN,
-    select: { id: true },
-  });
+  let candidates: Array<{ id: string }> = [];
+
+  try {
+    const jobs = await prisma.finalizeJob.findMany({
+      where: { status: { in: ['pending', 'failed', 'running'] } },
+      orderBy: { updatedAt: 'asc' },
+      take: MAX_RECORDINGS_PER_RUN,
+      select: { recordingId: true },
+    });
+
+    candidates = jobs.map((j: { recordingId: string }) => ({ id: j.recordingId }));
+  } catch {
+    const recordings = await prisma.recording.findMany({
+      where: {
+        status: { in: ['uploading', 'processing', 'failed'] },
+        chunks: { some: {} },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: MAX_RECORDINGS_PER_RUN,
+      select: { id: true },
+    });
+    candidates = recordings;
+  }
 
   let completed = 0;
   let partial = 0;
@@ -53,6 +67,19 @@ async function runWorker() {
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const staleUploads = await prisma.recording.findMany({
+    where: {
+      status: 'uploading',
+      chunks: { some: {} },
+    },
+    take: MAX_RECORDINGS_PER_RUN,
+    select: { id: true },
+  }).catch(() => []);
+
+  for (const rec of staleUploads) {
+    await enqueueFinalizeJob(rec.id);
   }
 
   const stats = await runWorker();

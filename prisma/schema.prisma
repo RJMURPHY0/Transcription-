@@ -18,6 +18,7 @@ model Recording {
   status     String   @default("uploading")
 
   chunks     ChunkBlob[]
+  finalizeJob FinalizeJob?
   transcript Transcript?
   summary    Summary?
 }
@@ -35,6 +36,42 @@ model ChunkBlob {
   createdAt   DateTime  @default(now())
 
   @@index([recordingId, offset])
+}
+
+model FinalizeJob {
+  id          String          @id @default(cuid())
+  recordingId String          @unique
+  recording   Recording       @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  status      String          @default("pending")
+  attempts    Int             @default(0)
+  lockToken   String?
+  lockUntil   DateTime?
+  lastError   String          @default("")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  chunks      ChunkTranscript[]
+
+  @@index([status, updatedAt])
+}
+
+model ChunkTranscript {
+  id          String      @id @default(cuid())
+  jobId        String
+  job          FinalizeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  recordingId  String
+  chunkId      String
+  offset       Float       @default(0)
+  status       String      @default("pending")
+  attempts     Int         @default(0)
+  lastError    String      @default("")
+  transcript   String      @default("")
+  segments     String      @default("[]")
+  processedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([jobId, chunkId])
+  @@index([recordingId, status, offset])
 }
 
 model Transcript {

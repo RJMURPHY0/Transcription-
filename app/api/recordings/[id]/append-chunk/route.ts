@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { enqueueFinalizeJob } from '@/lib/finalize-recording';
 
 export const dynamic = 'force-dynamic';
 // No AI calls here — just a DB write, so a short timeout is plenty.
@@ -62,6 +63,8 @@ export async function POST(
         data:  { status: 'uploading' },
       }),
     ]);
+
+    await enqueueFinalizeJob(params.id);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
