@@ -48,14 +48,21 @@ export async function POST(
     // Store raw bytes — transcription happens later in /finalize.
     // This means the upload phase can never fail due to AI API errors or rate limits.
     const bytes = await file.arrayBuffer();
-    await prisma.chunkBlob.create({
-      data: {
-        recordingId: params.id,
-        audioData:   Buffer.from(bytes),
-        offset:      timeOffset,
-        mimeType:    baseMime,
-      },
-    });
+    await prisma.$transaction([
+      prisma.chunkBlob.create({
+        data: {
+          recordingId: params.id,
+          audioData:   Buffer.from(bytes),
+          offset:      timeOffset,
+          mimeType:    baseMime,
+          status:      'pending',
+        },
+      }),
+      prisma.recording.update({
+        where: { id: params.id },
+        data:  { status: 'uploading' },
+      }),
+    ]);
 
     return NextResponse.json({ ok: true });
   } catch (error) {

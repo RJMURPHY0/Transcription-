@@ -43,6 +43,7 @@ export default function RecordPage() {
   const timeOffsetRef   = useRef(0);
   const chunkStartRef   = useRef(0);
   const isActiveRef     = useRef(false);
+  const wakeLockRef     = useRef<WakeLockSentinel | null>(null);
 
   // Timer — only runs during recording
   useEffect(() => {
@@ -53,6 +54,43 @@ export default function RecordPage() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [state]);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (!wakeLockRef.current) return;
+    try {
+      await wakeLockRef.current.release();
+    } catch {
+      // no-op
+    } finally {
+      wakeLockRef.current = null;
+    }
+  }, []);
+
+  const requestWakeLock = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request('screen');
+      wakeLockRef.current.addEventListener('release', () => {
+        wakeLockRef.current = null;
+      }, { once: true });
+    } catch {
+      // Some browsers/devices block wake-lock. Recording can still continue.
+    }
+  }, []);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && state === 'recording' && !wakeLockRef.current) {
+        void requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      void releaseWakeLock();
+    };
+  }, [state, requestWakeLock, releaseWakeLock]);
 
   const uploadChunk = useCallback(async (blob: Blob, offset: number) => {
     const id = recordingIdRef.current;
@@ -123,7 +161,7 @@ export default function RecordPage() {
           if (!id) return;
 
           // Kick off finalize in the background (no await — server does the work)
-          fetch(`/api/recordings/${id}/finalize`, { method: 'POST' }).catch(() => {});
+          fetch(`/api/recordings/${id}/finalize`, { method: 'POST', keepalive: true }).catch(() => {});
 
           // Navigate to the recording page — it will show "processing" status
           // and automatically reflect completion when the user refreshes.
@@ -152,6 +190,7 @@ export default function RecordPage() {
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      await requestWakeLock();
 
       const mime = getBestMime();
       mimeRef.current = mime;
@@ -168,10 +207,11 @@ export default function RecordPage() {
 
       setState('recording');
     } catch (err) {
+      await releaseWakeLock();
       setErrorMsg(err instanceof Error ? err.message : 'Microphone access denied. Allow mic access and try again.');
       setState('error');
     }
-  }, [startRecorder]);
+  }, [startRecorder, requestWakeLock, releaseWakeLock]);
 
   const stop = useCallback(() => {
     if (state !== 'recording') return;
@@ -190,7 +230,8 @@ export default function RecordPage() {
 
     // Release mic
     streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, [state]);
+    void releaseWakeLock();
+  }, [state, releaseWakeLock]);
 
   const handleClick = () => {
     if (state === 'recording') stop();
