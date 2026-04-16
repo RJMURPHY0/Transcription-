@@ -17,6 +17,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.87.0",
     "@prisma/client": "^5.22.0",
+    "docx": "^9.6.1",
     "formidable": "^3.5.4",
     "next": "^14.2.35",
     "openai": "^6.34.0",

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import DeleteButton from './DeleteButton';
 import EditableTitle from './EditableTitle';
 import ChatPanel from './ChatPanel';
+import EditableAINotes from './EditableAINotes';
 import type { TranscriptSegment, TopicSection } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
@@ -52,14 +53,6 @@ function SpeakerBlock({ seg }: { seg: { speaker: string; start: number; end: num
   );
 }
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-surface-border bg-surface-card p-5">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-ftc-mid mb-4">{title}</h2>
-      {children}
-    </div>
-  );
-}
 
 export default async function RecordingPage({ params }: { params: { id: string } }) {
   const recording = await prisma.recording
@@ -151,84 +144,24 @@ export default async function RecordingPage({ params }: { params: { id: string }
           </div>
 
           {/* ── MIDDLE: AI Notes ── */}
-          <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-ftc-mid flex items-center gap-2">
-              <svg className="w-3.5 h-3.5 text-brand" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm-1 5h2v6h-2zm0 8h2v2h-2z"/>
-              </svg>
-              AI Notes
-            </p>
-
+          <div>
             {recording.summary ? (
-              <>
-                <SectionCard title="Summary">
-                  <p className="text-sm text-ftc-gray leading-7">{recording.summary.overview}</p>
-                </SectionCard>
-
-                {actions.length > 0 && (
-                  <SectionCard title="Action Items">
-                    <ul className="space-y-3">
-                      {actions.map((item, i) => (
-                        <li key={i} className="flex items-start gap-3">
-                          <span className="mt-0.5 w-5 h-5 rounded border border-surface-muted flex items-center justify-center text-xs text-ftc-mid flex-shrink-0">
-                            {i + 1}
-                          </span>
-                          <span className="text-sm text-ftc-gray leading-relaxed">{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </SectionCard>
-                )}
-
-                {points.length > 0 && (
-                  <SectionCard title="Key Points">
-                    <ul className="space-y-2.5">
-                      {points.map((p, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
-                          <span className="mt-2 w-1.5 h-1.5 rounded-full bg-brand flex-shrink-0" />
-                          <span className="text-sm text-ftc-gray leading-relaxed">{p}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </SectionCard>
-                )}
-
-                {decisions.length > 0 && decisions[0] !== 'None' && (
-                  <SectionCard title="Decisions">
-                    <ul className="space-y-2.5">
-                      {decisions.map((d, i) => (
-                        <li key={i} className="flex items-start gap-2.5">
-                          <svg className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span className="text-sm text-ftc-gray leading-relaxed">{d}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </SectionCard>
-                )}
-
-                {topics.length > 0 && (
-                  <SectionCard title="Topics">
-                    <ol className="space-y-0">
-                      {topics.map((t, i) => (
-                        <li key={i} className="flex items-center gap-3 py-2 border-b border-surface-border last:border-0">
-                          <span className="tabular-nums text-xs font-mono text-ftc-mid w-10 flex-shrink-0">
-                            {formatTimestamp(t.time)}
-                          </span>
-                          <span className="text-sm text-ftc-gray">{t.title}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </SectionCard>
-                )}
-              </>
+              <EditableAINotes
+                recordingId={recording.id}
+                recordingTitle={recording.title}
+                initialSummary={{
+                  overview:    recording.summary.overview,
+                  keyPoints:   points,
+                  actionItems: actions,
+                  decisions,
+                  topics,
+                }}
+              />
             ) : isComplete ? (
               <div className="rounded-2xl border border-surface-border bg-surface-card p-8 text-center text-ftc-mid text-sm">
                 No AI notes generated for this recording.
               </div>
             ) : null}
-
           </div>
 
           {/* ── RIGHT: Transcript ── */}
