@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
+import QuickDeleteButton from '@/components/QuickDeleteButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,10 +95,10 @@ export default async function Home() {
               const isComplete = rec.status === 'completed';
 
               return (
-                <li key={rec.id}>
+                <li key={rec.id} className="relative">
                   <Link
                     href={`/recordings/${rec.id}`}
-                    className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface-card p-5 transition-colors hover:border-surface-muted active:scale-[0.99] touch-manipulation"
+                    className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface-card p-5 pr-14 transition-colors hover:border-surface-muted active:scale-[0.99] touch-manipulation"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
@@ -147,6 +148,10 @@ export default async function Home() {
                       </div>
                     )}
                   </Link>
+                  {/* Delete — sits outside the Link so tapping it never navigates */}
+                  <div className="absolute top-1/2 right-3 -translate-y-1/2">
+                    <QuickDeleteButton id={rec.id} />
+                  </div>
                 </li>
               );
             })}

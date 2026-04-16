@@ -62,14 +62,20 @@ export default async function RecordingPage({ params }: { params: { id: string }
 
   if (!recording) notFound();
 
-  const actions:   string[]       = recording.summary ? JSON.parse(recording.summary.actionItems) : [];
-  const points:    string[]       = recording.summary ? JSON.parse(recording.summary.keyPoints)   : [];
-  const decisions: string[]       = recording.summary ? JSON.parse(recording.summary.decisions)   : [];
-  const topics:    TopicSection[] = recording.summary ? JSON.parse(recording.summary.topics ?? '[]') : [];
+  function safeJson<T>(value: string | null | undefined, fallback: T): T {
+    if (!value) return fallback;
+    try { return JSON.parse(value) as T; } catch { return fallback; }
+  }
 
-  const rawSegments: TranscriptSegment[] = recording.transcript?.segments
-    ? JSON.parse(recording.transcript.segments as string)
-    : [];
+  const actions:   string[]       = recording.summary ? safeJson<string[]>(recording.summary.actionItems, []) : [];
+  const points:    string[]       = recording.summary ? safeJson<string[]>(recording.summary.keyPoints,   []) : [];
+  const decisions: string[]       = recording.summary ? safeJson<string[]>(recording.summary.decisions,   []) : [];
+  const topics:    TopicSection[] = recording.summary ? safeJson<TopicSection[]>(recording.summary.topics, []) : [];
+
+  const rawSegments: TranscriptSegment[] = safeJson<TranscriptSegment[]>(
+    recording.transcript?.segments as string | undefined,
+    [],
+  );
   const hasSpeakers = rawSegments.length > 0;
   const isComplete   = recording.status === 'completed';
   const isFailed     = recording.status === 'failed';
