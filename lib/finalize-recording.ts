@@ -11,6 +11,7 @@ import {
   generateTopics,
 } from '@/lib/ai';
 import type { RawSegment } from '@/lib/ai';
+import { backupToAirtable } from '@/lib/airtable-backup';
 
 const LOCK_MS = 8 * 60 * 1000;
 const MAX_CHUNK_ATTEMPTS = 4;
@@ -107,9 +108,22 @@ async function analyzeAndCompleteRecording(recordingId: string): Promise<Finaliz
     },
   });
 
-  await prisma.recording.update({
+  const completedRecording = await prisma.recording.update({
     where: { id: recordingId },
     data: { status: 'completed', ...(title ? { title } : {}) },
+  });
+
+  // Fire-and-forget Airtable backup — never blocks the main flow
+  void backupToAirtable({
+    recordingId,
+    title:       completedRecording.title,
+    createdAt:   completedRecording.createdAt,
+    status:      'completed',
+    overview:    analysis.overview,
+    keyPoints:   analysis.keyPoints,
+    actionItems: analysis.actionItems,
+    decisions:   analysis.decisions,
+    fullText:    transcript.fullText,
   });
 
   return { ok: true, completed: true, failedChunks: 0, pendingChunks: 0 };
