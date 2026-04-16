@@ -15,30 +15,12 @@ function isAuthorized(req: NextRequest): boolean {
 }
 
 async function runWorker() {
-  const now = Date.now();
-  const staleUploading = new Date(now - 5 * 60 * 1000);
-  const staleProcessing = new Date(now - 2 * 60 * 1000);
-
   const candidates = await prisma.recording.findMany({
     where: {
-      OR: [
-        {
-          status: 'failed',
-          chunks: { some: { status: { in: ['pending', 'failed', 'processing'] } } },
-        },
-        {
-          status: 'processing',
-          updatedAt: { lt: staleProcessing },
-          chunks: { some: { status: { in: ['pending', 'failed', 'processing'] } } },
-        },
-        {
-          status: 'uploading',
-          updatedAt: { lt: staleUploading },
-          chunks: { some: { status: { in: ['pending', 'failed'] } } },
-        },
-      ],
+      status: { in: ['uploading', 'processing', 'failed'] },
+      chunks: { some: {} },
     },
-    orderBy: { updatedAt: 'asc' },
+    orderBy: { createdAt: 'asc' },
     take: MAX_RECORDINGS_PER_RUN,
     select: { id: true },
   });

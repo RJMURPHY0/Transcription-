@@ -55,7 +55,6 @@ export async function POST(
           audioData:   Buffer.from(bytes),
           offset:      timeOffset,
           mimeType:    baseMime,
-          status:      'pending',
         },
       }),
       prisma.recording.update({

@@ -11,14 +11,11 @@ model Recording {
   id         String   @id @default(cuid())
   title      String   @default("")
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
   duration   Int      @default(0)
   fileSize   Int      @default(0)
   mimeType   String   @default("")
   audioPath  String   @default("")
   status     String   @default("uploading")
-  lockToken  String?
-  lockUntil  DateTime?
 
   chunks     ChunkBlob[]
   transcript Transcript?
@@ -35,16 +32,9 @@ model ChunkBlob {
   audioData   Bytes
   offset      Float     @default(0)
   mimeType    String    @default("audio/webm")
-  status      String    @default("pending")
-  attempts    Int       @default(0)
-  lastError   String    @default("")
-  transcript  String    @default("")
-  segments    String    @default("[]")
-  processedAt DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([recordingId, offset])
-  @@index([recordingId, status])
 }
 
 model Transcript {
