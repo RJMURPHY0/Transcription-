@@ -47,7 +47,7 @@ export default function EditableTitle({ id, initial }: { id: string; initial: st
         onKeyDown={onKeyDown}
         disabled={saving}
         autoFocus
-        className="font-semibold text-sm text-ftc-gray bg-surface-raised border border-brand rounded-lg px-2 py-0.5 outline-none w-full max-w-xs"
+        className="font-semibold text-sm text-ftc-gray bg-surface-raised border border-brand rounded-lg px-2 py-0.5 outline-none w-full max-w-full sm:max-w-xs"
       />
     );
   }
@@ -57,11 +57,11 @@ export default function EditableTitle({ id, initial }: { id: string; initial: st
       type="button"
       onClick={startEdit}
       title="Click to rename"
-      className="group flex items-center gap-1.5 text-left touch-manipulation"
+      className="group flex w-full min-w-0 items-center gap-1.5 text-left touch-manipulation"
     >
-      <span className="font-semibold text-sm text-ftc-gray truncate">{title}</span>
+      <span className="block min-w-0 truncate font-semibold text-sm text-ftc-gray">{title}</span>
       <svg
-        className="w-3.5 h-3.5 text-surface-muted group-hover:text-brand transition-colors flex-shrink-0"
+        className="hidden h-3.5 w-3.5 flex-shrink-0 text-surface-muted transition-colors group-hover:text-brand sm:block"
         fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
       >
         <path strokeLinecap="round" strokeLinejoin="round"

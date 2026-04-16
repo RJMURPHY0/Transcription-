@@ -60,15 +60,27 @@ export default function RecordPage() {
     if (!id) throw new Error('No recording ID');
 
     const ext = mimeRef.current.includes('mp4') ? 'mp4' : 'webm';
-    const fd = new FormData();
-    fd.append('audio', blob, `chunk.${ext}`);
-    fd.append('offset', String(offset));
 
-    const res = await fetch(`/api/recordings/${id}/append-chunk`, { method: 'POST', body: fd });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({})) as { error?: string };
-      throw new Error(data.error ?? `Server error ${res.status}`);
+    let lastErr: Error = new Error('Upload failed');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
+      try {
+        // Rebuild FormData each attempt — a consumed body can't be re-sent
+        const fd = new FormData();
+        fd.append('audio', blob, `chunk.${ext}`);
+        fd.append('offset', String(offset));
+
+        const res = await fetch(`/api/recordings/${id}/append-chunk`, { method: 'POST', body: fd });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(data.error ?? `Server error ${res.status}`);
+        }
+        return; // success
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error('Upload failed');
+      }
     }
+    throw lastErr;
   }, []);
 
   // Starts (or restarts) a MediaRecorder on the existing stream
@@ -293,7 +305,7 @@ export default function RecordPage() {
 
           {state === 'processing' && (
             <p className="text-sm text-ftc-mid">
-              This may take up to 30 seconds
+              Longer meetings may take a minute or two
             </p>
           )}
 

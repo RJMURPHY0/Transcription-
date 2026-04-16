@@ -3,6 +3,12 @@
     "app/api/transcribe/route.ts": {
       "maxDuration": 60
     },
+    "app/api/recordings/[id]/append-chunk/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/recordings/[id]/finalize/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/recordings/[id]/chat/route.ts": {
       "maxDuration": 30
     }

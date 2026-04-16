@@ -91,7 +91,7 @@ export default async function RecordingPage({ params }: { params: { id: string }
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Link>
 
           {/* Breadcrumb */}
@@ -100,12 +100,12 @@ export default async function RecordingPage({ params }: { params: { id: string }
             <span>/</span>
           </div>
 
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 pr-1">
             <EditableTitle id={recording.id} initial={recording.title} />
             <p className="text-xs text-ftc-mid truncate hidden sm:block">{formatDate(recording.createdAt)}</p>
           </div>
 
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 whitespace-nowrap ${
             isComplete ? 'bg-emerald-500/10 text-emerald-400'
             : isFailed  ? 'bg-red-500/10 text-red-400'
             : 'bg-amber-500/10 text-amber-400'

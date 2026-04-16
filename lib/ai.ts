@@ -91,6 +91,53 @@ export async function transcribeAudio(filePath: string): Promise<{ text: string;
   }
 }
 
+// Process at most this many segments per Claude call to stay well within context/timeout limits
+const DIARIZE_BATCH_SIZE = 100;
+
+async function diarizeBatch(
+  segments: RawSegment[],
+  prevSpeaker: string,
+  client: Anthropic,
+): Promise<string[]> {
+  const segmentList = segments
+    .map((s, i) => `[${i}] ${formatTime(s.start)}: ${s.text.trim()}`)
+    .join('\n');
+
+  const contextHint = prevSpeaker
+    ? `Continuing from the previous batch. The last speaker was ${prevSpeaker}. Continue numbering speakers consistently — do not restart from Speaker 1 unless it is genuinely a new speaker.\n\n`
+    : '';
+
+  const message = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 2048,
+    messages: [
+      {
+        role: 'user',
+        content: `${contextHint}Identify speaker changes in this meeting transcript. Assign "Speaker 1", "Speaker 2", etc. in order of first appearance.
+
+Return ONLY a JSON array of speaker label strings, one per segment in order.
+
+Segments:
+${segmentList}
+
+Return format (one label per segment): ["Speaker 1","Speaker 1","Speaker 2",...]`,
+      },
+    ],
+  });
+
+  const content = message.content[0];
+  if (content.type !== 'text') return segments.map(() => prevSpeaker || 'Speaker 1');
+
+  try {
+    const jsonMatch = content.text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('No JSON array in response');
+    const labels = JSON.parse(jsonMatch[0]) as string[];
+    return segments.map((_, i) => labels[i] ?? prevSpeaker ?? 'Speaker 1');
+  } catch {
+    return segments.map(() => prevSpeaker || 'Speaker 1');
+  }
+}
+
 export async function diarizeSegments(rawSegments: RawSegment[]): Promise<TranscriptSegment[]> {
   if (!rawSegments.length) return [];
 
@@ -99,45 +146,19 @@ export async function diarizeSegments(rawSegments: RawSegment[]): Promise<Transc
     return rawSegments.map((s) => ({ ...s, speaker: 'Speaker 1' }));
   }
 
-  const segmentList = rawSegments
-    .map((s, i) => `[${i}] ${formatTime(s.start)}: ${s.text.trim()}`)
-    .join('\n');
+  const allLabels: string[] = [];
+  let prevSpeaker = '';
 
-  const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: `Identify speaker changes in this meeting transcript. Assign "Speaker 1", "Speaker 2", etc. in order of first appearance.
-
-Return ONLY a JSON array — one object per segment index — mapping each index to a speaker label.
-
-Segments:
-${segmentList}
-
-Return format:
-[{"index":0,"speaker":"Speaker 1"},{"index":1,"speaker":"Speaker 2"},...]`,
-      },
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== 'text') return rawSegments.map((s) => ({ ...s, speaker: 'Speaker 1' }));
-
-  try {
-    const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No JSON array in response');
-    const mappings = JSON.parse(jsonMatch[0]) as { index: number; speaker: string }[];
-
-    // Apply speaker labels to original segments — timestamps are always from Whisper, not Claude
-    return rawSegments.map((s, i) => {
-      const mapping = mappings.find((m) => m.index === i);
-      return { ...s, speaker: mapping?.speaker ?? 'Speaker 1' };
-    });
-  } catch {
-    return rawSegments.map((s) => ({ ...s, speaker: 'Speaker 1' }));
+  // Process in batches so long meetings (hundreds of segments) don't hit context/timeout limits
+  for (let i = 0; i < rawSegments.length; i += DIARIZE_BATCH_SIZE) {
+    const batch = rawSegments.slice(i, i + DIARIZE_BATCH_SIZE);
+    const labels = await diarizeBatch(batch, prevSpeaker, anthropic);
+    allLabels.push(...labels);
+    prevSpeaker = labels[labels.length - 1] ?? prevSpeaker;
   }
+
+  // Timestamps are always from Whisper — only the speaker label comes from Claude
+  return rawSegments.map((s, i) => ({ ...s, speaker: allLabels[i] ?? 'Speaker 1' }));
 }
 
 export async function generateTitle(transcript: string): Promise<string | null> {
@@ -168,6 +189,9 @@ ${transcript.slice(0, 600)}`,
   }
 }
 
+// ~24 000 words — enough for a 2-3 hour meeting; keeps prompt well within Haiku's context window
+const MAX_TRANSCRIPT_CHARS = 120_000;
+
 export async function analyzeTranscript(transcript: string): Promise<AnalysisResult> {
   if (isMockAnthropic || !anthropic) {
     return {
@@ -177,6 +201,11 @@ export async function analyzeTranscript(transcript: string): Promise<AnalysisRes
       decisions: [],
     };
   }
+
+  const truncated =
+    transcript.length > MAX_TRANSCRIPT_CHARS
+      ? transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '\n\n[Transcript truncated — full meeting was longer]'
+      : transcript;
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -197,7 +226,7 @@ Format:
 Rules: keyPoints 3-5 items; actionItems empty array if none; decisions empty array if none.
 
 TRANSCRIPT:
-${transcript}`,
+${truncated}`,
       },
     ],
   });

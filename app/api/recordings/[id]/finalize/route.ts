@@ -4,7 +4,7 @@ import { diarizeSegments, analyzeTranscript, generateTitle } from '@/lib/ai';
 import type { RawSegment } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const CUID_RE = /^c[a-z0-9]{20,}$/;
 
