@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
+import QuickDeleteButton from '@/components/QuickDeleteButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,11 +91,11 @@ export default async function Home() {
           <ul className="space-y-3">
             {recordings.map((rec) => {
               const actions: string[] = rec.summary ? JSON.parse(rec.summary.actionItems) : [];
-              const points: string[] = rec.summary ? JSON.parse(rec.summary.keyPoints) : [];
-              const isComplete = rec.status === 'completed';
+              const points:  string[] = rec.summary ? JSON.parse(rec.summary.keyPoints)   : [];
 
               return (
-                <li key={rec.id}>
+                <li key={rec.id} className="group relative">
+                  {/* Clickable card */}
                   <Link
                     href={`/recordings/${rec.id}`}
                     className="flex flex-col gap-3 rounded-2xl border border-surface-border bg-surface-card p-5 transition-colors hover:border-surface-muted active:scale-[0.99] touch-manipulation"
@@ -105,7 +106,7 @@ export default async function Home() {
                           <MicIcon className="w-5 h-5 text-brand" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm text-ftc-gray truncate">{rec.title}</p>
+                          <p className="font-semibold text-sm text-ftc-gray truncate pr-16">{rec.title}</p>
                           <p className="text-xs mt-0.5 text-ftc-mid">{formatDate(rec.createdAt)}</p>
                         </div>
                       </div>
@@ -148,6 +149,11 @@ export default async function Home() {
                       </div>
                     )}
                   </Link>
+
+                  {/* Delete button — floats top-right, visible on hover or when confirming */}
+                  <div className="absolute top-4 right-[4.5rem] z-10">
+                    <QuickDeleteButton id={rec.id} />
+                  </div>
                 </li>
               );
             })}
