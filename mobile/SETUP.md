@@ -1,5 +1,14 @@
 # FTC Transcribe — iOS App
 
+## Install Link (TestFlight)
+
+> **Once built, paste your TestFlight public link here:**
+>
+> `https://testflight.apple.com/join/XXXXXXXX`
+>
+> Anyone with this link can install the app directly on their iPhone — no App Store needed.
+> Generate it in App Store Connect → TestFlight → External Testing → Public Link.
+
 Records meetings in the background even when your screen is locked.
 Calls the same Vercel backend as the web app.
 
