@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import GlobalChatWidget from '@/components/GlobalChatWidget';
+import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar';
 
 export const metadata: Metadata = {
   title: 'FTC Transcribe – AI Meeting Notes',
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         {children}
         <GlobalChatWidget />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

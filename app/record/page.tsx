@@ -344,7 +344,7 @@ export default function RecordPage() {
 
           {(state === 'uploading' || state === 'queued') && (
             <p className="text-sm text-ftc-mid">
-              Redirecting you to your recording…
+              Audio saved to server — transcription will finish even if you lock your phone.
             </p>
           )}
 
@@ -360,7 +360,7 @@ export default function RecordPage() {
 
         {state === 'idle' && (
           <p className="text-xs text-center max-w-xs text-surface-muted">
-            Works for meetings of any length. Audio is saved in 2-minute segments as you record, then transcribed when you stop.
+            Keep screen on while recording. Once you stop, audio is saved on our servers — you can lock your phone and transcription will complete automatically.
           </p>
         )}
       </main>

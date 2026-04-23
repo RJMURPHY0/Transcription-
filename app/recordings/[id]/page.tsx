@@ -76,7 +76,19 @@ export default async function RecordingPage({ params }: { params: { id: string }
     recording.transcript?.segments as string | undefined,
     [],
   );
-  const hasSpeakers = rawSegments.length > 0;
+
+  // Merge consecutive same-speaker segments into one block
+  const speakerGroups = rawSegments.reduce<TranscriptSegment[]>((groups, seg) => {
+    const last = groups[groups.length - 1];
+    if (last && last.speaker === seg.speaker) {
+      groups[groups.length - 1] = { ...last, text: last.text + ' ' + seg.text.trim(), end: seg.end };
+    } else {
+      groups.push({ ...seg, text: seg.text.trim() });
+    }
+    return groups;
+  }, []);
+
+  const hasSpeakers = speakerGroups.length > 0;
   const isComplete   = recording.status === 'completed';
   const isFailed     = recording.status === 'failed';
   const isUploading  = recording.status === 'uploading' || recording.status === 'queued';
@@ -199,7 +211,7 @@ export default async function RecordingPage({ params }: { params: { id: string }
             {recording.transcript ? (
               <div className="rounded-2xl border border-surface-border bg-surface-card p-5 space-y-4">
                 {hasSpeakers ? (
-                  rawSegments.map((seg, i) => (
+                  speakerGroups.map((seg, i) => (
                     <SpeakerBlock key={i} seg={seg} />
                   ))
                 ) : (
