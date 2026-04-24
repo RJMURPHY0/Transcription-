@@ -3,7 +3,8 @@ import { Suspense } from 'react';
 import { prisma } from '@/lib/db';
 import QuickDeleteButton from '@/components/QuickDeleteButton';
 import AssignFolderButton from '@/components/AssignFolderButton';
-import FolderTabs from '@/components/FolderTabs';
+import NewFolderButton from '@/components/NewFolderButton';
+import FolderActions from '@/components/FolderActions';
 import { estimateSeconds } from '@/lib/finalize-recording';
 
 export const dynamic = 'force-dynamic';
@@ -17,8 +18,7 @@ function formatDate(date: Date) {
 
 function formatEta(seconds: number): string {
   if (seconds < 60) return '< 1 min';
-  const mins = Math.ceil(seconds / 60);
-  return `~${mins} min`;
+  return `~${Math.ceil(seconds / 60)} min`;
 }
 
 function safeJson<T>(value: string | null | undefined, fallback: T): T {
@@ -54,20 +54,22 @@ export default async function Home({
         include: { _count: { select: { recordings: true } } },
       }),
       prisma.recording.findMany({
-        where: activeFolderId ? { folderId: activeFolderId } : {},
+        // In a folder: show that folder's recordings. In All: show unassigned only.
+        where: activeFolderId ? { folderId: activeFolderId } : { folderId: null },
         include: { summary: true, _count: { select: { chunks: true } } },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
   } catch { /* DB not ready */ }
 
-  const allCount = await prisma.recording.count().catch(() => 0);
+  const allCount  = await prisma.recording.count().catch(() => 0);
   const completed = await prisma.recording.count({ where: { status: 'completed' } }).catch(() => 0);
   const thisWeek  = await prisma.recording.count({
     where: { createdAt: { gte: new Date(Date.now() - 7 * 86400_000) } },
   }).catch(() => 0);
 
   const folderList = folders.map((f) => ({ id: f.id, name: f.name }));
+  const activeFolder = activeFolderId ? folders.find(f => f.id === activeFolderId) : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-surface">
@@ -105,15 +107,99 @@ export default async function Home({
           </div>
         )}
 
-        {/* Folder tabs */}
-        <Suspense>
-          <FolderTabs folders={folders} />
-        </Suspense>
+        {/* ── Breadcrumb / heading row ── */}
+        <div className="flex items-center justify-between gap-3 mb-5">
+          {activeFolderId ? (
+            /* Folder view breadcrumb */
+            <div className="flex items-center gap-2 min-w-0">
+              <Link
+                href="/"
+                className="flex items-center gap-1 text-sm text-ftc-mid hover:text-ftc-gray transition-colors flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                All
+              </Link>
+              <svg className="w-3.5 h-3.5 text-surface-muted flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              <div className="flex items-center gap-2 min-w-0">
+                <svg className="w-4 h-4 text-brand flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
+                </svg>
+                <span className="font-semibold text-sm text-ftc-gray truncate">
+                  {activeFolder?.name ?? 'Folder'}
+                </span>
+                <span className="text-xs text-ftc-mid flex-shrink-0">
+                  ({activeFolder?._count.recordings ?? 0})
+                </span>
+              </div>
+              {activeFolder && (
+                <Suspense>
+                  <FolderActions id={activeFolderId} name={activeFolder.name} isActive />
+                </Suspense>
+              )}
+            </div>
+          ) : (
+            /* All view heading */
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-ftc-mid">
+              All Recordings
+            </h2>
+          )}
 
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-ftc-mid mb-4">
-          {activeFolderId ? (folders.find((f) => f.id === activeFolderId)?.name ?? 'Folder') : 'All Recordings'}
-        </h2>
+          {/* New folder button — only shown in All view */}
+          {!activeFolderId && (
+            <Suspense>
+              <NewFolderButton />
+            </Suspense>
+          )}
+        </div>
 
+        {/* ── Folder cards (All view only) ── */}
+        {!activeFolderId && folders.length > 0 && (
+          <ul className="space-y-2 mb-6">
+            {folders.map((folder) => (
+              <li key={folder.id}>
+                <Link
+                  href={`/?folder=${folder.id}`}
+                  className="group flex items-center gap-4 rounded-2xl border border-surface-border bg-surface-card px-5 py-4 transition-colors hover:border-surface-muted active:scale-[0.99] touch-manipulation"
+                >
+                  {/* Folder icon */}
+                  <div className="w-9 h-9 rounded-xl bg-brand/10 flex-shrink-0 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
+                    </svg>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm text-ftc-gray">{folder.name}</p>
+                    <p className="text-xs text-ftc-mid mt-0.5">
+                      {folder._count.recordings} recording{folder._count.recordings !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+
+                  <Suspense>
+                    <FolderActions id={folder.id} name={folder.name} isActive={false} />
+                  </Suspense>
+
+                  <svg className="w-4 h-4 text-surface-muted group-hover:text-ftc-mid transition-colors flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* ── Recording list label when in All view with folders ── */}
+        {!activeFolderId && folders.length > 0 && (
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-ftc-mid mb-4">
+            Unassigned
+          </h3>
+        )}
+
+        {/* ── Recording cards ── */}
         {recordings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-5">
             <div className="w-20 h-20 rounded-2xl border border-surface-border bg-surface-card flex items-center justify-center">
@@ -124,7 +210,9 @@ export default async function Home({
                 {activeFolderId ? 'No recordings in this folder' : 'No recordings yet'}
               </p>
               <p className="text-sm text-ftc-mid">
-                {activeFolderId ? 'Move recordings here using the folder icon on each card' : 'Tap New Recording to capture your first meeting'}
+                {activeFolderId
+                  ? 'Move recordings here using the folder icon on each card'
+                  : 'Tap New Recording to capture your first meeting'}
               </p>
             </div>
             {!activeFolderId && (
@@ -136,11 +224,10 @@ export default async function Home({
         ) : (
           <ul className="space-y-3">
             {recordings.map((rec) => {
-              const actions = safeJson<string[]>(rec.summary?.actionItems, []);
-              const points  = safeJson<string[]>(rec.summary?.keyPoints,   []);
+              const actions  = safeJson<string[]>(rec.summary?.actionItems, []);
+              const points   = safeJson<string[]>(rec.summary?.keyPoints,   []);
               const isQueued = rec.status === 'uploading' || rec.status === 'queued' || rec.status === 'processing';
-              const chunkCount = rec._count.chunks;
-              const eta = isQueued ? formatEta(estimateSeconds(chunkCount)) : null;
+              const eta      = isQueued ? formatEta(estimateSeconds(rec._count.chunks)) : null;
 
               return (
                 <li key={rec.id} className="relative">
@@ -169,9 +256,7 @@ export default async function Home({
                             : (rec.status === 'uploading' || rec.status === 'queued') ? 'queued'
                             : rec.status}
                         </span>
-                        {eta && (
-                          <span className="text-[10px] text-ftc-mid">{eta}</span>
-                        )}
+                        {eta && <span className="text-[10px] text-ftc-mid">{eta}</span>}
                       </div>
                     </div>
 
@@ -203,7 +288,6 @@ export default async function Home({
                     )}
                   </Link>
 
-                  {/* Action buttons outside the Link */}
                   <div className="absolute top-1/2 right-3 -translate-y-1/2 flex flex-col gap-1 items-center">
                     <AssignFolderButton
                       recordingId={rec.id}
