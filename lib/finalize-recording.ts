@@ -438,6 +438,9 @@ async function finalizeWithJobs(recordingId: string): Promise<FinalizeResult> {
       return { ok: true, completed: false, failedChunks, pendingChunks, reason: 'Some chunks failed and were kept for retry.' };
     }
 
+    // Refresh lock before analysis — diarization + AI calls can take several minutes
+    // and the last refreshJobLock was called during chunk processing above.
+    await refreshJobLock(lock.id, lock.token);
     const completed = await analyzeAndCompleteRecording(recordingId);
     if (!completed.ok) {
       await prisma.finalizeJob.update({ where: { id: lock.id }, data: { status: 'failed', lastError: completed.reason } });

@@ -72,9 +72,13 @@ export async function POST(
       });
     }
 
-    const actionItems: string[] = recording.summary ? JSON.parse(recording.summary.actionItems) : [];
-    const keyPoints: string[]   = recording.summary ? JSON.parse(recording.summary.keyPoints)   : [];
-    const decisions: string[]   = recording.summary ? JSON.parse(recording.summary.decisions)   : [];
+    function safeParseArray(json: string | null | undefined): string[] {
+      if (!json) return [];
+      try { const v = JSON.parse(json); return Array.isArray(v) ? v : []; } catch { return []; }
+    }
+    const actionItems = recording.summary ? safeParseArray(recording.summary.actionItems) : [];
+    const keyPoints   = recording.summary ? safeParseArray(recording.summary.keyPoints)   : [];
+    const decisions   = recording.summary ? safeParseArray(recording.summary.decisions)   : [];
 
     // Build speaker-attributed transcript from segments so named speakers can be queried
     let transcriptContext: string;

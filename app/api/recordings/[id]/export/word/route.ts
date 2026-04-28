@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { prisma } from '@/lib/db';
 import {
@@ -37,10 +37,10 @@ function safeJson<T>(v: string | null | undefined, fallback: T): T {
 
 // ── Document building blocks ──────────────────────────────────────────────────
 
-function logoParagraph(): Paragraph | null {
+async function logoParagraph(): Promise<Paragraph | null> {
   try {
     const logoPath = join(process.cwd(), 'public', 'logo.png');
-    const data = readFileSync(logoPath);
+    const data = await readFile(logoPath);
     return new Paragraph({
       children: [
         new ImageRun({
@@ -209,7 +209,7 @@ export async function GET(
   const children: Paragraph[] = [];
 
   // Logo (optional — skipped if file missing)
-  const logo = logoParagraph();
+  const logo = await logoParagraph();
   if (logo) children.push(logo);
 
   children.push(

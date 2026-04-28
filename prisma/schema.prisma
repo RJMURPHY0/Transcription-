@@ -81,6 +81,7 @@ model ChunkTranscript {
 
   @@unique([jobId, chunkId])
   @@index([recordingId, status, offset])
+  @@index([jobId, status])
 }
 
 model Transcript {
