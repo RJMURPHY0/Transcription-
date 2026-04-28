@@ -188,7 +188,11 @@ export default function RecordPage() {
       if (!createRes.ok || !createData.id) throw new Error(createData.error ?? 'Could not create recording');
       recordingIdRef.current = createData.id;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredMicId = localStorage.getItem('preferredMicId');
+      const audioConstraint: MediaTrackConstraints | boolean = preferredMicId
+        ? { deviceId: { ideal: preferredMicId } }
+        : true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint });
       streamRef.current = stream;
       await requestWakeLock();
 

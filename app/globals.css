@@ -13,6 +13,8 @@
     padding-top: env(safe-area-inset-top);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
   }
 
   ::-webkit-scrollbar { width: 4px; }
