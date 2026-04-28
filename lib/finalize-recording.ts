@@ -345,6 +345,16 @@ async function finalizeWithJobs(recordingId: string): Promise<FinalizeResult> {
             select: { audioData: true },
           });
 
+          // Chunks smaller than 1 KB contain no real audio (e.g. WebM cluster headers from
+          // browsers that fail to capture after a recorder restart). Skip transcription.
+          if ((blob.audioData as Buffer).length < 1000) {
+            await prisma.chunkTranscript.update({
+              where: { jobId_chunkId: { jobId: lock.id, chunkId: chunkMeta.id } },
+              data: { status: 'succeeded', transcript: '', segments: '[]', processedAt: new Date(), lastError: '' },
+            });
+            return;
+          }
+
           let chunkText: string;
           let chunkSegments: RawSegment[] | DeepgramRawSegment[];
 

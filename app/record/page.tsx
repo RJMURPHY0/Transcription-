@@ -112,7 +112,37 @@ export default function RecordPage() {
     throw lastErr;
   }, []);
 
-  // Starts (or restarts) a MediaRecorder on the existing stream
+  // Snapshot current blobs and upload as a chunk WITHOUT stopping the recorder.
+  // This avoids the iOS Safari bug where a new MediaRecorder on the same stream
+  // silently stops capturing audio after the first stop/start cycle.
+  const rotateChunk = useCallback(async () => {
+    if (!isActiveRef.current) return;
+
+    const blobs = [...chunkBlobsRef.current];
+    const offset = timeOffsetRef.current;
+    const duration = (Date.now() - chunkStartRef.current) / 1000;
+
+    chunkBlobsRef.current = [];
+    timeOffsetRef.current += duration;
+    chunkStartRef.current = Date.now();
+
+    // Schedule the next rotation before the async upload so the interval stays accurate
+    chunkTimerRef.current = setTimeout(rotateChunk, CHUNK_MS);
+
+    const blob = new Blob(blobs, { type: mimeRef.current });
+    if (blob.size >= 1000) {
+      try {
+        await uploadChunk(blob, offset);
+        setChunksSaved((n) => n + 1);
+      } catch (err) {
+        // Upload failed but recording continues — the missed chunk will leave a gap
+        console.warn('[rotate] chunk upload failed:', err instanceof Error ? err.message : err);
+      }
+    }
+  }, [uploadChunk]);
+
+  // Creates ONE MediaRecorder for the entire meeting — never stopped mid-session.
+  // Chunk rotation is handled by rotateChunk() via a timer, not by stop/restart.
   const startRecorder = useCallback((stream: MediaStream, mime: string) => {
     const mr = new MediaRecorder(stream, { mimeType: mime });
     recorderRef.current = mr;
@@ -123,43 +153,24 @@ export default function RecordPage() {
       if (e.data.size > 0) chunkBlobsRef.current.push(e.data);
     };
 
+    // onstop only fires when the user explicitly stops recording
     mr.onstop = async () => {
-      const blob = new Blob(chunkBlobsRef.current, { type: mime });
+      const blobs = chunkBlobsRef.current;
       chunkBlobsRef.current = [];
       const offset = timeOffsetRef.current;
-      const chunkDuration = (Date.now() - chunkStartRef.current) / 1000;
-      timeOffsetRef.current += chunkDuration;
 
       try {
-        await uploadChunk(blob, offset);
-
-        if (isActiveRef.current) {
-          // Still recording — rotate to next chunk
-          setChunksSaved((n) => n + 1);
-          startRecorder(stream, mime);
-          chunkTimerRef.current = setTimeout(() => {
-            if (recorderRef.current?.state === 'recording') {
-              recorderRef.current.stop();
-            }
-          }, CHUNK_MS);
-        } else {
-          // User stopped — final chunk uploaded successfully.
-          // Update state to show "queued" so user knows processing will happen.
-          setChunksSaved((n) => n + 1);
-          setState('queued');
-
-          // Fire-and-forget finalize — the recording page will poll for status.
-          // We navigate immediately so the user can see progress there.
-          const id = recordingIdRef.current;
-          if (!id) return;
-
-          // Kick off finalize in the background (no await — server does the work)
-          fetch(`/api/recordings/${id}/finalize`, { method: 'POST', keepalive: true }).catch(() => {});
-
-          // Navigate to the recording page — it will show "processing" status
-          // and automatically reflect completion when the user refreshes.
-          router.push(`/recordings/${id}`);
+        const blob = new Blob(blobs, { type: mime });
+        if (blob.size >= 1000) {
+          await uploadChunk(blob, offset);
         }
+        setChunksSaved((n) => n + 1);
+        setState('queued');
+
+        const id = recordingIdRef.current;
+        if (!id) return;
+        fetch(`/api/recordings/${id}/finalize`, { method: 'POST', keepalive: true }).catch(() => {});
+        router.push(`/recordings/${id}`);
       } catch (err) {
         isActiveRef.current = false;
         setErrorMsg(err instanceof Error ? err.message : 'Upload failed. Please try again.');
@@ -195,20 +206,14 @@ export default function RecordPage() {
       isActiveRef.current = true;
 
       startRecorder(stream, mime);
-
-      chunkTimerRef.current = setTimeout(() => {
-        if (recorderRef.current?.state === 'recording') {
-          recorderRef.current.stop();
-        }
-      }, CHUNK_MS);
-
+      chunkTimerRef.current = setTimeout(rotateChunk, CHUNK_MS);
       setState('recording');
     } catch (err) {
       releaseWakeLock();
       setErrorMsg(err instanceof Error ? err.message : 'Microphone access denied. Allow mic access and try again.');
       setState('error');
     }
-  }, [startRecorder, requestWakeLock, releaseWakeLock]);
+  }, [startRecorder, rotateChunk, requestWakeLock, releaseWakeLock]);
 
   const stop = useCallback(() => {
     if (state !== 'recording') return;
