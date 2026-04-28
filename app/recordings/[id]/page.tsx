@@ -7,6 +7,7 @@ import ProcessingPoller from './ProcessingPoller';
 import EditableTitle from './EditableTitle';
 import ChatPanel from './ChatPanel';
 import EditableAINotes from './EditableAINotes';
+import SpeakerPanel from './SpeakerPanel';
 import type { TranscriptSegment, TopicSection } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
@@ -27,9 +28,9 @@ const SPEAKER_COLOURS = [
   { label: 'text-rose-400',   dot: 'bg-rose-400',   border: 'border-rose-400/20',   bg: 'bg-rose-400/5'   },
 ];
 
-function speakerIndex(speaker: string): number {
-  const match = speaker.match(/\d+/);
-  return match ? (parseInt(match[0], 10) - 1) % SPEAKER_COLOURS.length : 0;
+function speakerIndex(speaker: string, order: string[]): number {
+  const i = order.indexOf(speaker);
+  return (i >= 0 ? i : 0) % SPEAKER_COLOURS.length;
 }
 
 function formatTimestamp(seconds: number): string {
@@ -38,8 +39,8 @@ function formatTimestamp(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function SpeakerBlock({ seg }: { seg: { speaker: string; start: number; end: number; text: string } }) {
-  const idx = speakerIndex(seg.speaker);
+function SpeakerBlock({ seg, speakerOrder }: { seg: { speaker: string; start: number; end: number; text: string }; speakerOrder: string[] }) {
+  const idx = speakerIndex(seg.speaker, speakerOrder);
   const c = SPEAKER_COLOURS[idx];
   return (
     <div className={`rounded-xl border ${c.border} ${c.bg} px-4 py-3`}>
@@ -88,6 +89,9 @@ export default async function RecordingPage({ params }: { params: { id: string }
     }
     return groups;
   }, []);
+
+  // Unique speakers in order of first appearance — used for stable colour assignment
+  const speakerOrder = Array.from(new Set(speakerGroups.map(g => g.speaker)));
 
   const hasSpeakers = speakerGroups.length > 0;
   const isComplete   = recording.status === 'completed';
@@ -214,17 +218,22 @@ export default async function RecordingPage({ params }: { params: { id: string }
             </p>
 
             {recording.transcript ? (
-              <div className="rounded-2xl border border-surface-border bg-surface-card p-5 space-y-4">
-                {hasSpeakers ? (
-                  speakerGroups.map((seg, i) => (
-                    <SpeakerBlock key={i} seg={seg} />
-                  ))
-                ) : (
-                  <p className="text-sm text-ftc-gray leading-8 whitespace-pre-wrap">
-                    {recording.transcript.fullText}
-                  </p>
+              <>
+                {hasSpeakers && (
+                  <SpeakerPanel recordingId={recording.id} speakers={speakerOrder} />
                 )}
-              </div>
+                <div className="rounded-2xl border border-surface-border bg-surface-card p-5 space-y-4">
+                  {hasSpeakers ? (
+                    speakerGroups.map((seg, i) => (
+                      <SpeakerBlock key={i} seg={seg} speakerOrder={speakerOrder} />
+                    ))
+                  ) : (
+                    <p className="text-sm text-ftc-gray leading-8 whitespace-pre-wrap">
+                      {recording.transcript.fullText}
+                    </p>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="rounded-2xl border border-surface-border bg-surface-card p-8 text-center text-ftc-mid text-sm">
                 {isComplete ? 'No transcript available.' : 'Transcript will appear here once processing is complete.'}
