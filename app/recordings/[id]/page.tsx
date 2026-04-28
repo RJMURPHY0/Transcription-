@@ -155,16 +155,8 @@ export default async function RecordingPage({ params }: { params: { id: string }
           <div className="flex items-start gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4 text-blue-300 text-sm">
             <div className="w-4 h-4 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-3">
-              <span>Queued for transcription — processing automatically. This page refreshes every 10 seconds.</span>
+              <span>Queued for transcription — this page refreshes every 10 seconds. You can leave and come back.</span>
               <RetryButton id={recording.id} />
-            </div>
-          </div>
-        )}
-        {isUploading && (
-          <div className="flex items-center gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 mb-4 text-blue-300 text-sm">
-            <div className="w-4 h-4 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin flex-shrink-0" />
-            <div className="flex-1">
-              Your recording is queued for transcription. This page will update automatically — no need to stay here.
             </div>
           </div>
         )}
