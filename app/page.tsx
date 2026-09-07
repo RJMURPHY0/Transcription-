@@ -22,6 +22,7 @@ import {
   getMemberUserIds,
   getMemberNames,
 } from '@/lib/contacts-db';
+import { Settings, ChevronLeft, ChevronRight, Folder, Users, AlertTriangle, Mic } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,15 +66,6 @@ function AdminFiltersFallback() {
 function formatEta(seconds: number): string {
   if (seconds < 60) return '< 1 min';
   return `~${Math.ceil(seconds / 60)} min`;
-}
-
-function MicIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V22H9v2h6v-2h-2v-1.06A9 9 0 0 0 21 12v-2h-2z" />
-    </svg>
-  );
 }
 
 export default async function Home({
@@ -334,10 +326,7 @@ export default async function Home({
               className="p-2 rounded-xl text-ftc-mid hover:text-ftc-gray hover:bg-surface-raised transition-colors touch-manipulation"
               title="Settings"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-              </svg>
+              <Settings className="w-5 h-5" strokeWidth={1.75} />
             </Link>
             <Link href="/record" className="btn-brand flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white touch-manipulation">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -437,18 +426,12 @@ export default async function Home({
                 href={withScope({})}
                 className="flex items-center gap-1 text-sm text-ftc-mid hover:text-ftc-gray transition-colors flex-shrink-0"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
+                <ChevronLeft className="w-4 h-4" />
                 Back
               </Link>
-              <svg className="w-3.5 h-3.5 text-surface-muted flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight className="w-3.5 h-3.5 text-surface-muted flex-shrink-0" />
               <div className="flex items-center gap-2 min-w-0">
-                <svg className="w-4 h-4 text-brand flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-                </svg>
+                <Folder className="w-4 h-4 text-brand flex-shrink-0" />
                 <span className="font-semibold text-sm text-ftc-gray truncate">
                   {activeFolder?.name ?? 'Folder'}
                 </span>
@@ -470,18 +453,12 @@ export default async function Home({
                 href={teamBackHref}
                 className="flex items-center gap-1 text-sm text-ftc-mid hover:text-ftc-gray transition-colors flex-shrink-0"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
+                <ChevronLeft className="w-4 h-4" />
                 {activeOrg?.name ?? 'All'}
               </Link>
-              <svg className="w-3.5 h-3.5 text-surface-muted flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
+              <ChevronRight className="w-3.5 h-3.5 text-surface-muted flex-shrink-0" />
               <div className="flex items-center gap-2 min-w-0">
-                <svg className="w-4 h-4 text-brand flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                </svg>
+                <Users className="w-4 h-4 text-brand flex-shrink-0" />
                 <span className="font-semibold text-sm text-ftc-gray truncate">
                   {activeTeam?.name ?? 'Team'}
                 </span>
@@ -520,16 +497,12 @@ export default async function Home({
                   className="group flex items-center gap-4 rounded-2xl px-5 py-4 active:scale-[0.99] touch-manipulation"
                 >
                   <div className="w-9 h-9 rounded-xl bg-brand/10 flex-shrink-0 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
+                    <Users className="w-5 h-5 text-brand" strokeWidth={1.75} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-ftc-gray">{team.name}</p>
                   </div>
-                  <svg className="w-4 h-4 text-surface-muted group-hover:text-ftc-mid transition-colors flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-4 h-4 text-surface-muted group-hover:text-ftc-mid transition-colors flex-shrink-0" />
                 </Link>
                 </SpotlightCard>
               </li>
@@ -547,10 +520,8 @@ export default async function Home({
                   href={withScope({ folder: folder.id })}
                   className="group flex items-center gap-4 rounded-2xl px-5 py-4 active:scale-[0.99] touch-manipulation"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-brand/10 flex-shrink-0 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-brand" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-                    </svg>
+                  <div className="w-9 h-9 rounded-lg bg-brand/10 flex-shrink-0 flex items-center justify-center">
+                    <Folder className="w-4 h-4 text-brand" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm text-ftc-gray">{folder.name}</p>
@@ -561,9 +532,7 @@ export default async function Home({
                   <Suspense>
                     <FolderActions id={folder.id} name={folder.name} isActive={false} />
                   </Suspense>
-                  <svg className="w-4 h-4 text-surface-muted group-hover:text-ftc-mid transition-colors flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                  <ChevronRight className="w-4 h-4 text-surface-muted group-hover:text-ftc-mid transition-colors flex-shrink-0" />
                 </Link>
                 </SpotlightCard>
               </li>
@@ -588,9 +557,7 @@ export default async function Home({
           // DB was unreachable — never imply the meetings are gone. Offer a retry.
           <div className="flex flex-col items-center justify-center py-24 gap-5">
             <div className="w-20 h-20 rounded-2xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-center">
-              <svg className="w-9 h-9 text-amber-400" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0 3.75h.008M10.34 3.94l-8.4 14.55A1.5 1.5 0 003.24 21h17.52a1.5 1.5 0 001.3-2.25l-8.4-14.55a1.5 1.5 0 00-2.62 0z" />
-              </svg>
+              <AlertTriangle className="w-9 h-9 text-amber-400" strokeWidth={1.8} />
             </div>
             <div className="text-center">
               <p className="font-semibold text-ftc-gray mb-1">Couldn&apos;t load your recordings</p>
@@ -605,7 +572,7 @@ export default async function Home({
         ) : recordings.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-5">
             <div className="w-20 h-20 rounded-2xl border border-surface-border bg-surface-card flex items-center justify-center">
-              <MicIcon className="w-9 h-9 text-surface-muted" />
+              <Mic className="w-9 h-9 text-surface-muted" />
             </div>
             <div className="text-center">
               <p className="font-semibold text-ftc-gray mb-1">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Folder, Check } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -54,9 +55,7 @@ export default function AssignFolderButton({
           {saving ? (
             <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
           ) : (
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-            </svg>
+            <Folder className="w-4 h-4" />
           )}
         </button>
       </DropdownMenuTrigger>
@@ -78,14 +77,10 @@ export default function AssignFolderButton({
             onSelect={() => assign(f.id)}
             className={`text-xs gap-2 ${f.id === currentFolderId ? 'text-brand' : ''}`}
           >
-            <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-            </svg>
+            <Folder className="w-3 h-3 flex-shrink-0" />
             {f.name}
             {f.id === currentFolderId && (
-              <svg className="w-3 h-3 ml-auto text-brand" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
+              <Check className="w-3 h-3 ml-auto text-brand" />
             )}
           </DropdownMenuItem>
         ))}

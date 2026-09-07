@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AssignFolderButton from './AssignFolderButton';
 import QuickDeleteButton from './QuickDeleteButton';
+import { Folder, ChevronDown, Trash2, Check, Mic, User, CircleCheck, Zap, Download, X } from 'lucide-react';
 import { providerBadge } from '@/lib/meeting-provider';
 import { SpotlightCard } from '@/components/ui/spotlight-card';
 import {
@@ -73,15 +74,6 @@ const COUNTDOWN_WIDTH: Record<number, string> = {
   0: 'w-0',
 };
 
-function MicIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2H3v2a9 9 0 0 0 8 8.94V22H9v2h6v-2h-2v-1.06A9 9 0 0 0 21 12v-2h-2z" />
-    </svg>
-  );
-}
-
 function safeJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
   try { return JSON.parse(value) as T; } catch { return fallback; }
@@ -110,13 +102,9 @@ function BulkFolderPicker({
           type="button"
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-ftc-gray bg-surface-raised hover:bg-surface-border transition-colors touch-manipulation"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-          </svg>
+          <Folder className="w-4 h-4" />
           Add to folder
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
+          <ChevronDown className="w-3.5 h-3.5" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-52">
@@ -126,9 +114,7 @@ function BulkFolderPicker({
           <>
             {folders.map((f) => (
               <DropdownMenuItem key={f.id} onSelect={() => onAssign(f.id)} className="gap-2 text-xs">
-                <svg className="w-3.5 h-3.5 text-brand flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25" />
-                </svg>
+                <Folder className="w-3.5 h-3.5 text-brand flex-shrink-0" />
                 {f.name}
               </DropdownMenuItem>
             ))}
@@ -185,9 +171,7 @@ function MergeButton({
             className="flex items-center px-1.5 py-2 rounded-r-xl text-sm bg-brand/80 text-white hover:bg-brand/70 border-l border-white/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors touch-manipulation"
             aria-label="More merge options"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
+            <ChevronDown className="w-3.5 h-3.5" strokeWidth={2.5} />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="end" className="w-64">
@@ -202,9 +186,7 @@ function MergeButton({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={onMergeDelete} className="items-start gap-2 text-xs">
-            <svg className="w-3.5 h-3.5 mt-0.5 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-            </svg>
+            <Trash2 className="w-3.5 h-3.5 mt-0.5 text-red-400 flex-shrink-0" />
             <div>
               <p className="font-medium text-ftc-gray">Merge &amp; Delete originals</p>
               <p className="text-surface-muted mt-0.5">Replaces them with merged meeting</p>
@@ -426,9 +408,7 @@ export default function RecordingsList({
                 {isSelected ? (
                   <span className="text-[11px] font-bold leading-none">{selNum}</span>
                 ) : (
-                  <svg className="w-3 h-3 text-surface-muted" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
+                  <Check className="w-3 h-3 text-surface-muted" strokeWidth={2.5} />
                 )}
               </button>
 
@@ -458,7 +438,7 @@ export default function RecordingsList({
                           <path d="M12.5 2C11.1 2 10 3.1 10 4.5S11.1 7 12.5 7 15 5.9 15 4.5 13.9 2 12.5 2zm5 3c-.8 0-1.5.7-1.5 1.5S16.7 8 17.5 8 19 7.3 19 6.5 18.3 5 17.5 5zM3 9v10h2v-4h1.5c.3 1.2 1.3 2 2.5 2s2.2-.8 2.5-2H13v4h2V9H3zm8 4H5v-2h6v2z"/>
                         </svg>
                       ) : (
-                        <MicIcon className="w-5 h-5 text-brand" />
+                        <Mic className="w-5 h-5 text-brand" />
                       )}
                     </div>
                     <div className="min-w-0">
@@ -480,9 +460,7 @@ export default function RecordingsList({
                           <>
                             <span className="text-surface-muted">·</span>
                             <span className="flex items-center gap-1 truncate">
-                              <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                              </svg>
+                              <User className="w-3 h-3 flex-shrink-0" />
                               {rec.ownerName}
                             </span>
                           </>
@@ -514,17 +492,13 @@ export default function RecordingsList({
                   <div className="flex items-center gap-4 text-xs text-surface-muted">
                     {actions.length > 0 && (
                       <span className="flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <CircleCheck className="w-3.5 h-3.5 text-emerald-500" />
                         {actions.length} action{actions.length !== 1 ? 's' : ''}
                       </span>
                     )}
                     {points.length > 0 && (
                       <span className="flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5 text-brand" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
+                        <Zap className="w-3.5 h-3.5 text-brand" />
                         {points.length} key point{points.length !== 1 ? 's' : ''}
                       </span>
                     )}
@@ -609,9 +583,7 @@ export default function RecordingsList({
             onClick={handleDownload}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-ftc-gray bg-surface-raised hover:bg-surface-border transition-colors touch-manipulation"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
+            <Download className="w-4 h-4" />
             Download
           </button>
 
@@ -623,9 +595,7 @@ export default function RecordingsList({
             aria-label="Clear selection"
             className="ml-1 p-2 rounded-xl text-ftc-mid hover:text-ftc-gray hover:bg-surface-raised transition-colors touch-manipulation"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="w-4 h-4" strokeWidth={2.5} />
           </button>
         </div>
       )}

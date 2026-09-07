@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Plus } from 'lucide-react';
 
 export default function NewFolderButton() {
   const router = useRouter();
@@ -29,9 +30,7 @@ export default function NewFolderButton() {
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-ftc-mid hover:text-ftc-gray hover:bg-surface-border transition-colors border border-dashed border-surface-border touch-manipulation"
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-        </svg>
+        <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
         New folder
       </button>
     );
