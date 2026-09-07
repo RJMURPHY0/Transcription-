@@ -4,6 +4,7 @@ import {
   diarizeSegments,
   identifySpeakerNames,
   analyzeTranscript,
+  classifyMeetingType,
   generateTitle,
   generateTopics,
 } from '@/lib/ai';
@@ -402,7 +403,7 @@ async function analyzeAndCompleteRecording(recordingId: string): Promise<Finaliz
   await ensureSchema(); // self-heal: make sure new Summary columns exist before writing
   const [transcript, recording, existingSummary] = await Promise.all([
     prisma.transcript.findUnique({ where: { recordingId } }),
-    prisma.recording.findUnique({ where: { id: recordingId }, select: { meetingType: true, createdAt: true, status: true, userId: true } }),
+    prisma.recording.findUnique({ where: { id: recordingId }, select: { meetingType: true, title: true, createdAt: true, status: true, userId: true } }),
     prisma.summary.findUnique({ where: { recordingId }, select: { id: true } }),
   ]);
 
@@ -417,7 +418,21 @@ async function analyzeAndCompleteRecording(recordingId: string): Promise<Finaliz
     return { ok: false, reason: 'No transcript to analyse.' };
   }
 
-  const meetingType = (recording?.meetingType ?? 'general') as MeetingType;
+  // 'auto' means the recorder did not pick a type, which is the normal case —
+  // classify it from the transcript. An explicit choice is never overwritten.
+  // This runs BEFORE the analysis on purpose: analyzeTranscript selects its
+  // prompt from the type, so classifying first is what lets a sales call get
+  // the sales prompt instead of the generic one.
+  const storedType = (recording?.meetingType ?? 'general') as MeetingType | 'auto';
+  const meetingType: MeetingType = storedType === 'auto'
+    ? await classifyMeetingType(transcript.fullText)
+    : storedType;
+
+  if (meetingType !== storedType) {
+    await prisma.recording
+      .update({ where: { id: recordingId }, data: { meetingType } })
+      .catch(() => { /* the summary matters more than the label */ });
+  }
 
   let rawSegments: Array<RawSegment & { speaker?: string }> = [];
   try {

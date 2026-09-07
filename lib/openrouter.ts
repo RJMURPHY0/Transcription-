@@ -28,10 +28,24 @@ const modelLadder = MODELS.length ? MODELS : DEFAULT_MODELS;
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
-export async function openRouterComplete(prompt: string, maxTokens: number): Promise<string | null> {
+// The paid rung. Named because some callers need the SAME model every time
+// rather than whichever free rung happens to answer — see `models` below.
+export const STABLE_MODEL = 'openai/gpt-oss-120b';
+
+/**
+ * @param models Override the ladder. Pass a single model when run-to-run
+ *   agreement matters more than saving a fraction of a penny: the free rungs
+ *   429 under load, so the ladder silently changes which model answers, and two
+ *   models will not classify a borderline case the same way.
+ */
+export async function openRouterComplete(
+  prompt: string,
+  maxTokens: number,
+  models: readonly string[] = modelLadder,
+): Promise<string | null> {
   if (!OPENROUTER_KEY) return null;
 
-  for (const model of modelLadder) {
+  for (const model of models) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
     try {

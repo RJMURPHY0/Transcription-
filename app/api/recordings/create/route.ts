@@ -6,7 +6,10 @@ import { rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_MEETING_TYPES = new Set(['general', 'standup', 'sales', 'interview', 'review']);
+// 'auto' is stored as a marker, not as a type: finalize replaces it with the
+// kind of meeting read off the transcript. Anything else here is the recorder's
+// explicit choice and is never reclassified.
+const VALID_MEETING_TYPES = new Set(['auto', 'general', 'standup', 'sales', 'interview', 'review']);
 const VALID_CHANNEL_LAYOUTS = new Set(['mic-sys', 'mono']);
 // Which conferencing service, so a Google Meet call is not filed as Teams.
 // `source` stays a two-value field ('web' | 'teams') for the existing list
@@ -15,7 +18,7 @@ const VALID_PROVIDERS = new Set(['teams', 'meet', 'zoom', 'webex', 'slack', 'gen
 
 export async function POST(req: NextRequest) {
   let source = 'web';
-  let meetingType = 'general';
+  let meetingType = 'auto';
   let channelLayout: string | null = null;
   let meetingProvider: string | null = null;
   try {

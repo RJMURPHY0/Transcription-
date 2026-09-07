@@ -6,6 +6,7 @@ import DeleteButton from './DeleteButton';
 import RetryButton from './RetryButton';
 import ProcessingPoller from './ProcessingPoller';
 import EditableTitle from './EditableTitle';
+import MeetingTypeBadge from './MeetingTypeBadge';
 import ChatPanel from './ChatPanel';
 import EditableAINotes from './EditableAINotes';
 import { ActionItemsProvider } from './ActionItemsContext';
@@ -20,11 +21,6 @@ import { ensureSchema } from '@/lib/ensure-schema';
 import { getAuthUser, canAccessRecording } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
-
-const MEETING_TYPE_LABELS: Record<string, string> = {
-  general: '💬 General', standup: '🗓 Standup', sales: '📈 Sales',
-  interview: '🎯 Interview', review: '📋 Review',
-};
 
 function formatDate(date: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -129,11 +125,7 @@ export default async function RecordingPage({ params }: { params: { id: string }
             <EditableTitle id={recording.id} initial={recording.title} />
             <div className="flex items-center gap-2">
             <p className="text-xs text-ftc-mid truncate hidden sm:block">{formatDate(recording.createdAt)}</p>
-            {recording.meetingType && recording.meetingType !== 'general' && (
-              <span className="hidden sm:inline text-xs px-2 py-0.5 rounded-full bg-surface-raised border border-surface-border text-ftc-mid">
-                {MEETING_TYPE_LABELS[recording.meetingType] ?? recording.meetingType}
-              </span>
-            )}
+            <MeetingTypeBadge id={recording.id} initial={recording.meetingType} />
             {sourceBadge && (
               <span className={`hidden sm:inline text-xs px-2 py-0.5 rounded-full font-medium ${sourceBadge.className}`}>
                 {sourceBadge.label}

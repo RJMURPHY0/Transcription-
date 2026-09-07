@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import { normaliseDue } from './action-items';
-import { openRouterComplete, isOpenRouterReady } from './openrouter';
+import { openRouterComplete, isOpenRouterReady, STABLE_MODEL } from './openrouter';
 
 // ── Transcription: Groq (free Whisper) preferred, OpenAI Whisper as fallback ──
 const GROQ_KEY = process.env.GROQ_API_KEY;
@@ -34,7 +34,9 @@ const isLlmReady = isOpenRouterReady || !isMockAnthropic;
 async function llmComplete(
   prompt: string,
   maxTokens: number,
-  opts?: { preferAnthropic?: boolean },
+  // `stableModel` pins the OpenRouter side to one model instead of the ladder,
+  // for callers whose answer must not change between runs.
+  opts?: { preferAnthropic?: boolean; stableModel?: boolean },
 ): Promise<string | null> {
   const viaAnthropic = async (): Promise<string | null> => {
     if (isMockAnthropic || !anthropic) return null;
@@ -50,7 +52,7 @@ async function llmComplete(
       return null;
     }
   };
-  const viaOpenRouter = () => openRouterComplete(prompt, maxTokens);
+  const viaOpenRouter = () => openRouterComplete(prompt, maxTokens, opts?.stableModel ? [STABLE_MODEL] : undefined);
 
   const order = opts?.preferAnthropic ? [viaAnthropic, viaOpenRouter] : [viaOpenRouter, viaAnthropic];
   for (const attempt of order) {
@@ -363,6 +365,72 @@ ${transcript.slice(0, 600)}`,
     return text;
   } catch {
     return null;
+  }
+}
+
+/**
+ * What kind of meeting was this?
+ *
+ * The type used to be a chip you picked before pressing record, which is the
+ * wrong moment — you are about to start a call, not classify it — and it
+ * defaulted to "General", so every one of the first 58 recordings was filed as
+ * General and the meeting-type filter matched nothing. Reading it off the
+ * transcript afterwards is both accurate and free of the user's attention.
+ *
+ * It also improves the summary: analyzeTranscript picks its prompt from this,
+ * so a sales call gets the sales prompt instead of the generic one. That is why
+ * it runs before the analysis rather than alongside it.
+ *
+ * Deliberately biased towards 'general': a wrong specific label is worse than
+ * no label, because it changes the summary's whole framing.
+ */
+export async function classifyMeetingType(transcript: string): Promise<MeetingType> {
+  if (!isLlmReady || !transcript.trim()) return 'general';
+
+  // The transcript only. The title is deliberately withheld: it is itself
+  // generated from this transcript, and feeding it back in made the classifier
+  // key on topic words — "Sales Strategy Pivot Discussion" and "Sales Demo
+  // Debrief" are both internal meetings ABOUT selling, and both came back as
+  // sales calls until the title was removed.
+  //
+  // The opening minutes carry the intent (agenda, introductions, "thanks for
+  // taking the call"); the tail carries the outcome. Both beat the middle.
+  const head = transcript.slice(0, 5000);
+  const tail = transcript.length > 7000 ? `\n…\n${transcript.slice(-2000)}` : '';
+
+  try {
+    const raw = await llmComplete(
+      `Classify this meeting by the RELATIONSHIP between the people in the room, not by its subject matter. Reply with ONE word from the list and nothing else.
+
+standup   — a short recurring team round where each person in turn reports what they did, what they are doing next, and what is blocking them.
+sales     — a buyer and a seller from DIFFERENT organisations are both present and are working towards a business purchase: price, quote, proposal, contract, trial or pilot.
+interview — one side is assessing a named candidate for a job, and the candidate is present.
+review    — an appraisal of one named person's performance over a past period, with that person present.
+general   — everything else.
+
+general is the right answer for, among others:
+- internal discussions about sales, pipelines, targets or the sales process
+- building, demoing or reviewing a product with colleagues, even a sales product
+- project catch-ups, planning, and status discussions that are not a per-person round
+- catch-ups with an existing client about delivery rather than about buying
+- showing your own software to a colleague or a friendly tester, however much they like it
+- personal shopping or errands
+
+Choose a specific type only when the transcript plainly shows that relationship. When in any doubt answer general.
+
+Transcript:
+${head}${tail}`,
+      8,
+      // Pinned to one model. On the free ladder the same recording came back
+      // general on one run and sales on the next, because a saturated free rung
+      // hands the question to a different model that draws the line elsewhere.
+      { stableModel: true },
+    );
+
+    const word = raw?.toLowerCase().match(/standup|sales|interview|review|general/)?.[0];
+    return (word as MeetingType | undefined) ?? 'general';
+  } catch {
+    return 'general';
   }
 }
 

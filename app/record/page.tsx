@@ -17,7 +17,10 @@ import {
 
 type State = 'idle' | 'recording' | 'uploading' | 'queued' | 'error';
 type Source = 'web' | 'teams';
-export type MeetingType = 'general' | 'standup' | 'sales' | 'interview' | 'review';
+// 'auto' is the default and is not a real type: it tells finalize to read the
+// kind of meeting off the transcript. Picking one here is an explicit override
+// that the classifier never touches.
+export type MeetingType = 'auto' | 'general' | 'standup' | 'sales' | 'interview' | 'review';
 
 // A chunk only reaches the server when it rotates, so a freeze costs everything
 // buffered since the last rotation. Phones are where freezes happen, so they
@@ -48,6 +51,7 @@ const STALL_MS = 12_000;
 const STALL_POLL_MS = 3_000;
 
 const MEETING_TYPES: { id: MeetingType; label: string; icon: string }[] = [
+  { id: 'auto',      label: 'Auto',      icon: '✨' },
   { id: 'general',   label: 'General',   icon: '💬' },
   { id: 'standup',   label: 'Standup',   icon: '🗓' },
   { id: 'sales',     label: 'Sales',     icon: '📈' },
@@ -73,7 +77,7 @@ function getBestMime() {
 export default function RecordPage() {
   const [state, setState] = useState<State>('idle');
   const [source, setSource] = useState<Source>('web');
-  const [meetingType, setMeetingType] = useState<MeetingType>('general');
+  const [meetingType, setMeetingType] = useState<MeetingType>('auto');
   const [seconds,       setSeconds]       = useState(0);
   const [errorMsg,      setErrorMsg]      = useState('');
   const [chunksSaved,   setChunksSaved]   = useState(0);
@@ -1129,6 +1133,11 @@ export default function RecordPage() {
                   </button>
                 ))}
               </div>
+              {meetingType === 'auto' && (
+                <p className="text-[11px] text-surface-muted text-center">
+                  Worked out from the transcript afterwards.
+                </p>
+              )}
             </div>
 
             {/* Source toggle. Online Meeting is disabled outright where the

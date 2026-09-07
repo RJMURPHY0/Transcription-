@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
         mimeType: file.type,
         fileSize: file.size,
         status: 'processing',
+        // Read off the transcript at finalize rather than guessed at upload.
+        meetingType: 'auto',
       },
     });
     recordingId = recording.id;

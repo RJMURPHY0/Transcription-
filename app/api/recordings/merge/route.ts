@@ -112,6 +112,8 @@ export async function POST(request: NextRequest) {
       title: mergedBaseTitle,
       status: 'processing',
       mimeType: 'merged',
+      // Classified from the merged transcript at finalize, like any recording.
+      meetingType: 'auto',
       userId: user.id, // the merged copy belongs to whoever ran the merge
     },
   });
