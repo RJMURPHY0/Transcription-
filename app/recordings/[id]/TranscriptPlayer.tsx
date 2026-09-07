@@ -82,6 +82,7 @@ export default function TranscriptPlayer({ recordingId, rawSegments, speakerOrde
   const [activeIdx,  setActiveIdx]  = useState<number>(-1);
   const [focusedIdx, setFocusedIdx] = useState<number>(-1); // block holding the marked phrase from a notes/chat jump
   const [focusSpan,  setFocusSpan]  = useState<[number, number] | null>(null); // exact phrase within it
+  const [unpinned,   setUnpinned]   = useState(false); // last jump had no confident target
   const [menuOpen,   setMenuOpen]   = useState<number | null>(null); // group index
   // Menu renders in a body portal (the transcript panel's overflow clips
   // anything absolutely positioned near its bottom edge), anchored to the
@@ -130,14 +131,30 @@ export default function TranscriptPlayer({ recordingId, rawSegments, speakerOrde
       idx = loc.index;
       span = loc.span;
     }
-    if (idx < 0) return;
 
+    // A paraphrase the transcript doesn't clearly support. Say so instead of
+    // leaving the last jump's mark sitting there as if it were the answer.
+    if (idx < 0) {
+      setFocusedIdx(-1);
+      setFocusSpan(null);
+      setUnpinned(true);
+      return;
+    }
+
+    setUnpinned(false);
     groupRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setFocusedIdx(idx);
     setFocusSpan(span);
   // Fire on each new request (nonce guarantees a fresh object per click).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus.request]);
+
+  // The notice is transient — it answers one click and then gets out of the way.
+  useEffect(() => {
+    if (!unpinned) return;
+    const t = setTimeout(() => setUnpinned(false), 4000);
+    return () => clearTimeout(t);
+  }, [unpinned, focus.request]);
 
   const handleTimeUpdate = (t: number) => {
     const idx = groups.findLastIndex(g => g.start <= t);
@@ -172,6 +189,18 @@ export default function TranscriptPlayer({ recordingId, rawSegments, speakerOrde
           meta={playbackMeta}
           onTimeUpdate={handleTimeUpdate}
         />
+      )}
+
+      {/* Nothing in the transcript backs this line up. Sits above the playback
+          bar so it is visible wherever the reader has scrolled to. */}
+      {unpinned && (
+        <div className={`fixed ${hasAudio ? 'bottom-24' : 'bottom-6'} left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl border border-surface-border bg-surface-card shadow-2xl shadow-black/40 backdrop-blur-md`}>
+          <svg className="w-4 h-4 text-ftc-mid flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+          </svg>
+          <span className="text-sm text-ftc-gray">No single moment in the transcript matches that line.</span>
+        </div>
       )}
 
       {/* Transcript blocks */}

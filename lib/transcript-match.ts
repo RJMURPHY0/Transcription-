@@ -3,10 +3,22 @@
 // Key points, action items and decisions are AI-paraphrased strings with no
 // stored timestamp, so we can't jump to them by time the way topics do. Instead
 // we match the line's distinctive words against every transcript block and pick
-// the closest one. Weighting is IDF-based cosine similarity: words that appear
-// in many blocks (the, water, meeting) barely count, while rare, distinctive
-// ones (Montgomery, Stripe, safeforlegs) dominate — which is exactly what pins
-// a paraphrase back to the moment it was said.
+// the closest one.
+//
+// Scoring is BM25, not cosine. Cosine normalises each block by its own vector
+// norm, which hands a one-word block ("updated.") a near-perfect score for
+// sharing a single ordinary word with a twenty-word action item, while the
+// block that actually discussed the thing scores worse for being long. BM25
+// sums evidence over the query's terms instead, so matching six of a line's
+// words always beats matching one, and length only damps the score mildly.
+//
+// Two further guards:
+//  · an evidence floor — one word in common is not a citation, so a block has
+//    to share two content words with the line (or one rare enough to be a name
+//    only said in a couple of places). Nothing clears it, we report no match
+//    and the UI says so, rather than jumping somewhere arbitrary;
+//  · a neighbour bonus — a block sitting inside a stretch of conversation that
+//    also matches beats an isolated keyword echo elsewhere in the meeting.
 
 const STOPWORDS = new Set([
   'the','a','an','and','or','but','if','then','so','because','as','of','at','by',
@@ -21,9 +33,46 @@ const STOPWORDS = new Set([
   'which','what','when','where','why','how','also','get','got','one','make','made',
 ]);
 
+const VOWELS = /[aeiouy]/;
+
+/** Collapse a word's inflections so a paraphrase ("update the status") matches
+ *  the speech it came from ("we updated it", "it's updating"). Porter's first
+ *  step (plurals, -ed, -ing) plus a trailing-e strip, which is what puts
+ *  update / updates / updated / updating all on `updat`. Derivational endings
+ *  (-ation, -ment) are deliberately left alone: they shift the sense often
+ *  enough that folding them costs more precision than it buys recall. */
+function stem(word: string): string {
+  let w = word;
+
+  // Plurals.
+  if (w.endsWith('ies') && w.length > 4)          w = w.slice(0, -3) + 'y';
+  else if (w.endsWith('sses'))                    w = w.slice(0, -2);
+  else if (w.endsWith('ss'))                      { /* keep */ }
+  else if (w.endsWith('s') && w.length > 3)       w = w.slice(0, -1);
+
+  // Past and progressive, only when something pronounceable is left behind.
+  for (const suf of ['ing', 'ed'] as const) {
+    if (w.length > suf.length + 2 && w.endsWith(suf)) {
+      const base = w.slice(0, -suf.length);
+      if (VOWELS.test(base)) { w = base; break; }
+    }
+  }
+
+  // shipping → shipp → ship
+  const last = w[w.length - 1];
+  if (w.length > 3 && last === w[w.length - 2] && !'lsz'.includes(last) && !VOWELS.test(last)) {
+    w = w.slice(0, -1);
+  }
+
+  // quote → quot, so it meets quoted / quoting / quotes on the same stem.
+  if (w.length > 4 && w.endsWith('e')) w = w.slice(0, -1);
+
+  return w.length >= 3 ? w : word;
+}
+
 export function tokenize(text: string): string[] {
   const raw = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  return raw.filter((t) => t.length > 1 && !STOPWORDS.has(t));
+  return raw.filter((t) => t.length > 1 && !STOPWORDS.has(t)).map(stem);
 }
 
 /** Same content-word filter as tokenize(), but keeps each word's character
@@ -34,17 +83,32 @@ export function tokenizeWithOffsets(text: string): Array<{ tok: string; start: n
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const tok = m[0].toLowerCase();
-    if (tok.length > 1 && !STOPWORDS.has(tok)) out.push({ tok, start: m.index, end: m.index + m[0].length });
+    if (tok.length > 1 && !STOPWORDS.has(tok)) out.push({ tok: stem(tok), start: m.index, end: m.index + m[0].length });
   }
   return out;
 }
 
 /** Where in a block a summary line came from: the block index and the character
  *  span [start, end) of the tightest run of the line's distinctive words, or
- *  null when nothing distinctive lands inside it. */
+ *  null when nothing distinctive lands inside it. `index` is -1 when no block
+ *  carries enough of the line to be worth jumping to. */
 export interface MatchLocation {
   index: number;
   span: [number, number] | null;
+}
+
+/** One block's standing against a query. Used by the tuning script
+ *  (scripts/check-summary-jumps.ts) to see why a line landed where it did. */
+export interface MatchCandidate {
+  index: number;
+  /** BM25 score including the neighbour bonus. */
+  score: number;
+  /** Share of the query's distinctive weight this block carries, 0-1. */
+  coverage: number;
+  /** Distinct query terms found in the block. */
+  hits: number;
+  /** Whether it cleared the coverage floor and would be jumped to. */
+  accepted: boolean;
 }
 
 export interface SegmentMatcher {
@@ -52,58 +116,107 @@ export interface SegmentMatcher {
   match(query: string): number;
   /** Best block index AND the exact span within it to highlight. */
   locate(query: string): MatchLocation;
+  /** Ranked candidates with their scores — diagnostics, not used by the UI. */
+  explain(query: string, limit?: number): MatchCandidate[];
 }
 
+// BM25 constants. K1 saturates repeated terms; B is halved from the usual 0.75
+// because transcript blocks vary in length for reasons (a one-word interjection
+// versus a monologue) that say nothing about relevance.
+const K1 = 1.2;
+const B  = 0.5;
+
+// Shared content words a block needs before we will jump to it — except when
+// the single shared word is rare enough across the meeting to be a name or a
+// product ("Kenworth", "Qlik"), which is evidence on its own. Below the floor
+// the honest answer is "this line isn't pinned to one moment".
+const MIN_TERMS = 2;
+const RARE_DF   = 3;
+
+// How much of the best adjacent block's score counts toward this one. Enough to
+// break ties in favour of a matching stretch of conversation, not enough to
+// drag the jump onto a block that matched nothing itself.
+const NEIGHBOUR = 0.35;
+
 /**
- * Build a matcher over a fixed set of block texts. Precomputes per-block token
- * sets and IDF norms so each subsequent match() is cheap — call once (memoised
+ * Build a matcher over a fixed set of block texts. Precomputes per-block term
+ * frequencies and IDF so each subsequent match() is cheap — call once (memoised
  * on the segment list) and reuse across clicks.
  */
 export function createSegmentMatcher(texts: string[]): SegmentMatcher {
   const n = texts.length;
-  const tokenSets = texts.map((t) => new Set(tokenize(t)));
+  const tokenLists = texts.map(tokenize);
+  const lengths = tokenLists.map((t) => t.length);
+  const avgLen = (n > 0 ? lengths.reduce((a, b) => a + b, 0) / n : 0) || 1;
 
-  // Document frequency → IDF. Smoothed so a term present everywhere still has a
-  // small positive weight and a rare term is heavily favoured.
-  const df = new Map<string, number>();
-  for (const set of tokenSets) {
-    for (const tok of set) df.set(tok, (df.get(tok) ?? 0) + 1);
-  }
-  const idf = (tok: string) => Math.log((n + 1) / ((df.get(tok) ?? 0) + 1)) + 1;
-
-  // Per-block L2 norm over IDF weights (binary term presence).
-  const norms = tokenSets.map((set) => {
-    let sum = 0;
-    for (const tok of set) { const w = idf(tok); sum += w * w; }
-    return Math.sqrt(sum);
+  const tfs = tokenLists.map((toks) => {
+    const m = new Map<string, number>();
+    for (const t of toks) m.set(t, (m.get(t) ?? 0) + 1);
+    return m;
   });
 
-  function bestBlock(query: string): { index: number; qSet: Set<string> } {
+  const df = new Map<string, number>();
+  for (const m of tfs) for (const tok of m.keys()) df.set(tok, (df.get(tok) ?? 0) + 1);
+
+  // BM25 IDF, floored so a term present in most blocks still counts a little
+  // rather than going negative and penalising a block for containing it.
+  const idf = (tok: string) => {
+    const d = df.get(tok) ?? 0;
+    return Math.max(0.05, Math.log(1 + (n - d + 0.5) / (d + 0.5)));
+  };
+
+  function rank(query: string): { candidates: MatchCandidate[]; qSet: Set<string> } {
     const qTokens = Array.from(new Set(tokenize(query)));
-    if (qTokens.length === 0) return { index: -1, qSet: new Set() };
+    const qSet = new Set(qTokens);
+    if (qTokens.length === 0) return { candidates: [], qSet };
 
-    // Precompute each query term's squared IDF weight and the query norm.
-    let qNorm = 0;
-    const qSq = new Map<string, number>();
-    for (const tok of qTokens) { const w = idf(tok); qSq.set(tok, w * w); qNorm += w * w; }
-    qNorm = Math.sqrt(qNorm);
-    if (qNorm === 0) return { index: -1, qSet: new Set(qTokens) };
+    const weights = new Map<string, number>();
+    let qWeight = 0;
+    for (const tok of qTokens) { const w = idf(tok); weights.set(tok, w); qWeight += w; }
+    if (qWeight === 0) return { candidates: [], qSet };
 
-    // The query is a short summary line, so iterating its terms per block is
-    // cheap. Shared terms contribute idf² to the dot product (both sides use
-    // the same binary-presence × IDF weight).
-    let bestIdx = -1;
-    let bestScore = 0;
+    const scores  = new Array<number>(n).fill(0);
+    const covered = new Array<number>(n).fill(0);  // matched IDF weight
+    const hits    = new Array<number>(n).fill(0);  // matched distinct terms
+    const rare    = new Array<boolean>(n).fill(false); // matched something meeting-rare
+
     for (let i = 0; i < n; i++) {
-      if (norms[i] === 0) continue;
-      const set = tokenSets[i];
-      let dot = 0;
-      for (const [tok, w2] of qSq) if (set.has(tok)) dot += w2;
-      if (dot === 0) continue;
-      const score = dot / (qNorm * norms[i]);
-      if (score > bestScore) { bestScore = score; bestIdx = i; }
+      const tf = tfs[i];
+      if (tf.size === 0) continue;
+      const norm = 1 - B + B * (lengths[i] / avgLen);
+      for (const [tok, w] of weights) {
+        const f = tf.get(tok);
+        if (!f) continue;
+        scores[i]  += w * (f * (K1 + 1)) / (f + K1 * norm);
+        covered[i] += w;
+        hits[i]    += 1;
+        if ((df.get(tok) ?? 0) <= RARE_DF) rare[i] = true;
+      }
     }
-    return { index: bestIdx, qSet: new Set(qTokens) };
+
+    const needTerms = Math.min(MIN_TERMS, qTokens.length);
+    const candidates: MatchCandidate[] = [];
+    for (let i = 0; i < n; i++) {
+      if (scores[i] === 0) continue;
+      const around = Math.max(scores[i - 1] ?? 0, scores[i + 1] ?? 0);
+      candidates.push({
+        index: i,
+        score: scores[i] + NEIGHBOUR * around,
+        coverage: covered[i] / qWeight,
+        hits: hits[i],
+        // The gate is judged on the block itself: whatever its neighbours say,
+        // we only land the reader on a block carrying the line's own words.
+        accepted: hits[i] >= needTerms || (hits[i] > 0 && rare[i]),
+      });
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    return { candidates, qSet };
+  }
+
+  function bestBlock(query: string): { index: number; qSet: Set<string> } {
+    const { candidates, qSet } = rank(query);
+    const best = candidates.find((c) => c.accepted);
+    return { index: best ? best.index : -1, qSet };
   }
 
   // Words apart that a highlight will still bridge. Two matched words with a run
@@ -167,6 +280,9 @@ export function createSegmentMatcher(texts: string[]): SegmentMatcher {
       const { index, qSet } = bestBlock(query);
       if (index < 0) return { index, span: null };
       return { index, span: spanWithin(index, qSet) };
+    },
+    explain(query: string, limit = 5): MatchCandidate[] {
+      return rank(query).candidates.slice(0, limit);
     },
   };
 }
