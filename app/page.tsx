@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import type { Prisma } from '@prisma/client';
 import { prisma, withDbRetry } from '@/lib/db';
 import NewFolderButton from '@/components/NewFolderButton';
 import FolderActions from '@/components/FolderActions';
@@ -10,6 +11,7 @@ import SearchBar from '@/components/SearchBar';
 import { estimateSeconds } from '@/lib/estimate';
 import { measuredCost } from '@/lib/finalize-progress';
 import { getAuthUser } from '@/lib/auth';
+import { parseFilters, filtersToWhere, filtersToOrderBy, filtersToParams, FILTER_KEYS } from '@/lib/recording-filters';
 import { ensureSchema } from '@/lib/ensure-schema';
 import { SpotlightCard, GlowCard } from '@/components/ui/spotlight-card';
 import {
@@ -77,18 +79,30 @@ function MicIcon({ className }: { className?: string }) {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: { folder?: string; source?: string; org?: string; team?: string; assignee?: string; limit?: string };
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const activeFolderId   = searchParams.folder ?? null;
-  const activeSource     = searchParams.source === 'teams' ? 'teams' : searchParams.source === 'web' ? 'web' : null;
-  const activeOrgId      = searchParams.org ?? null;
-  const activeTeamId     = searchParams.team ?? null;
-  const activeAssigneeId = searchParams.assignee ?? null;
+  const one = (k: string) => {
+    const v = searchParams[k];
+    return (Array.isArray(v) ? v[0] : v) ?? null;
+  };
+
+  // Search-bar filters (source / type / date / terms / sort / …). They live in
+  // the URL so the list, the stat tiles and the search dropdown are all driven
+  // by the same values — see lib/recording-filters.ts.
+  const filters      = parseFilters(searchParams);
+  const filterWhere  = filtersToWhere(filters) as Prisma.RecordingWhereInput;
+  const filterParams = filtersToParams(filters);
+
+  const activeFolderId   = one('folder');
+  const activeSource     = filters.source ?? null;
+  const activeOrgId      = one('org');
+  const activeTeamId     = one('team');
+  const activeAssigneeId = one('assignee');
 
   // Paginate the recordings list — previously every row + summary was loaded on
   // every render. take one extra to know whether a "Show more" link is needed.
   const PAGE_SIZE = 30;
-  const limit = Math.max(PAGE_SIZE, parseInt(searchParams.limit ?? '', 10) || PAGE_SIZE);
+  const limit = Math.max(PAGE_SIZE, parseInt(one('limit') ?? '', 10) || PAGE_SIZE);
 
   await ensureSchema();
 
@@ -171,26 +185,33 @@ export default async function Home({
   // so the UI shows a Refresh prompt instead of a false empty state.
   let recordingsFailed = false;
 
-  const [folderResult, recordingResult, countsRows] = await Promise.all([
+  // What the list is actually showing, reused by the tiles so a filtered view
+  // can't sit under counts describing a different set of meetings.
+  const listWhere = {
+    ...(activeFolderId ? { folderId: activeFolderId } : { folderId: null }),
+    ...userScope,
+    deletedAt: null,
+    // Search-bar filters go in under AND so their own OR / relation clauses
+    // can never collide with the scope conditions above.
+    AND: [filterWhere],
+  };
+  const filtered = Object.keys(filterParams).length > 0;
+
+  const [folderResult, recordingResult, countsRows, filteredCounts] = await Promise.all([
     withDbRetry(() => prisma.folder.findMany({
       where: folderScope,
       orderBy: { createdAt: 'asc' },
       include: { _count: { select: { recordings: { where: { deletedAt: null } } } } },
     })).catch(() => []),
     withDbRetry(() => prisma.recording.findMany({
-      where: {
-        ...(activeFolderId ? { folderId: activeFolderId } : { folderId: null }),
-        ...(activeSource   ? { source: activeSource }    : {}),
-        ...userScope,
-        deletedAt: null,
-      },
+      where: listWhere,
       // Cards only render overview + key-point/action counts — pulling the full
       // summary row (topics, decisions, checked state) inflated every list load.
       include: {
         summary: { select: { overview: true, keyPoints: true, actionItems: true } },
         _count: { select: { chunks: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: filtersToOrderBy(filters),
       take: limit + 1,
     })).catch(() => { recordingsFailed = true; return []; }),
     // All four stat tiles in one round-trip instead of four parallel counts —
@@ -206,10 +227,27 @@ export default async function Home({
         AND (${statsUserId}::text IS NULL OR "userId" = ${statsUserId}::text)
         AND (${statsOrgId}::text IS NULL OR "orgId" = ${statsOrgId}::text)
     `).catch(() => []),
+    // Only when something is actually filtered — an unfiltered dashboard still
+    // costs exactly the queries it did before.
+    filtered
+      ? withDbRetry(() => Promise.all([
+          prisma.recording.count({ where: listWhere }),
+          prisma.recording.count({ where: { ...listWhere, status: 'completed' } }),
+          prisma.recording.count({
+            where: { ...listWhere, AND: [filterWhere, { createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) } }] },
+          }),
+        ])).catch(() => null)
+      : Promise.resolve(null),
   ]);
   folders = folderResult;
   recordings = recordingResult;
-  const { all: allCount = 0, completed = 0, week: thisWeek = 0, teams: teamsCount = 0 } = countsRows[0] ?? {};
+  const { all: rawAll = 0, completed: rawCompleted = 0, week: rawWeek = 0, teams: teamsCount = 0 } = countsRows[0] ?? {};
+
+  // `allCount` gates the stats block and the search bar, so it stays the
+  // unfiltered total — a filter that matches nothing must not hide the control
+  // you need in order to clear it.
+  const allCount = rawAll;
+  const [matchCount, completed, thisWeek] = filteredCounts ?? [rawAll, rawCompleted, rawWeek];
 
   // Trim the sentinel extra row and decide whether to offer "Show more".
   const hasMore = recordings.length > limit;
@@ -252,18 +290,20 @@ export default async function Home({
       ? `${ownerNames[assigneeUserId] ?? 'Team member'}'s Recordings`
       : 'All Recordings';
 
-  // Keep the active assignee scope on every in-page link, so drilling into a
-  // folder or a source tab doesn't silently snap back to your own meetings.
+  // Keep the active assignee scope AND the active filters on every in-page
+  // link, so drilling into a folder or a source tab doesn't silently snap back
+  // to your own unfiltered meetings. An explicit empty string clears a key —
+  // that is how the "All" source tab drops the source filter.
   const withScope = (params: Record<string, string>) => {
-    const sp = new URLSearchParams(params);
+    const sp = new URLSearchParams({ ...filterParams, ...params });
+    for (const [k, v] of Array.from(sp.entries())) if (v === '') sp.delete(k);
     if (canSeeAll && activeAssigneeId) sp.set('assignee', activeAssigneeId);
     const qs = sp.toString();
     return qs ? `/?${qs}` : '/';
   };
 
-  const showMoreParams = new URLSearchParams();
+  const showMoreParams = new URLSearchParams(filterParams);
   if (activeFolderId)   showMoreParams.set('folder', activeFolderId);
-  if (activeSource)     showMoreParams.set('source', activeSource);
   if (activeOrgId)      showMoreParams.set('org', activeOrgId);
   if (activeTeamId)     showMoreParams.set('team', activeTeamId);
   if (activeAssigneeId) showMoreParams.set('assignee', activeAssigneeId);
@@ -316,7 +356,7 @@ export default async function Home({
         {allCount > 0 && (
           <div className="grid grid-cols-3 gap-3 mb-8">
             {[
-              { label: 'Total', value: allCount },
+              { label: filtered ? 'Matching' : 'Total', value: matchCount },
               { label: 'Complete', value: completed },
               { label: 'This week', value: thisWeek },
             ].map(({ label, value }) => (
@@ -355,7 +395,7 @@ export default async function Home({
         {!activeFolderId && !activeTeamId && teamsCount > 0 && (
           <div className="flex gap-2 mb-5">
             <Link
-              href={withScope(activeOrgId ? { org: activeOrgId } : {})}
+              href={withScope({ source: '', ...(activeOrgId ? { org: activeOrgId } : {}) })}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${
                 !activeSource ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray hover:bg-surface-raised border border-surface-border'
               }`}

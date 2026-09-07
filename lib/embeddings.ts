@@ -64,7 +64,13 @@ export interface SearchResult {
   similarity:  number;
 }
 
-// Vector similarity search — falls back to empty if pgvector not available
+// Vector similarity search — falls back to empty if pgvector not available.
+//
+// NOT wired to the UI: this database has neither the `vector` extension nor the
+// transcript_embeddings table, so every call lands in the catch below and
+// returns nothing. "Ask AI" therefore builds a structured filter instead
+// (app/api/search/ai-filter). Kept because indexTranscript still writes here
+// when the table exists, and semantic search is worth having once it does.
 export async function vectorSearch(
   query:  string,
   userId: string | null,

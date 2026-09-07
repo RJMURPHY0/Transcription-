@@ -30,6 +30,9 @@
     },
     "app/api/user/export/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/search/ai-filter/route.ts": {
+      "maxDuration": 30
     }
   },
   "crons": [

@@ -1,8 +1,26 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+// Search + filters for the dashboard.
+//
+// Every filter lives in the URL, which is what makes it real: the server
+// re-renders the list, the stat tiles and the "Show more" link from the same
+// params. Until this change the panel only narrowed the search popover, so
+// picking "This week" with an empty box changed nothing on screen.
+//
+// The typed box still opens a quick-jump dropdown of matching meetings. "Ask
+// AI" takes whatever is in that box as a question and turns it into the same
+// filter the chips below produce — same control surface as the CRM's pipeline
+// search, so the two apps behave the same way.
+
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { Search, SlidersHorizontal, Sparkles, Loader2, X } from 'lucide-react';
+import {
+  parseFilters, filtersToParams, describeFilters, hasAnyFilter,
+  FILTER_KEYS, MEETING_TYPES, MEETING_TYPE_LABELS, DATE_LABELS,
+  type RecordingFilters, type DateFilter, type MeetingTypeFilter, type SortFilter,
+} from '@/lib/recording-filters';
 
 interface Result {
   id:          string;
@@ -13,84 +31,101 @@ interface Result {
   excerpt:     string;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  general: 'General', standup: 'Standup', sales: 'Sales', interview: 'Interview', review: 'Review',
-};
-
-const DATE_LABELS: Record<string, string> = {
-  all: 'Any time', week: 'This week', month: 'This month',
+const SORT_LABELS: Record<SortFilter, string> = {
+  newest: 'Newest', oldest: 'Oldest', longest: 'Longest', shortest: 'Shortest',
 };
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function dateFrom(range: string): string | null {
-  const now = Date.now();
-  if (range === 'week')  return new Date(now - 7  * 86400_000).toISOString();
-  if (range === 'month') return new Date(now - 30 * 86400_000).toISOString();
-  return null;
+/** Chip styling is shared by every option in the panel so a selected Source and
+ *  a selected Date can't drift apart visually. */
+function chipClass(active: boolean) {
+  return `text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+    active ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray bg-surface-raised'
+  }`;
 }
 
 export default function SearchBar({ canSeeAll = false }: { canSeeAll?: boolean }) {
-  const urlParams = useSearchParams();
+  const router      = useRouter();
+  const pathname    = usePathname();
+  const urlParams   = useSearchParams();
+
+  // The URL is the single source of truth for filters; this component only
+  // reads it and writes back to it.
+  const filters = useMemo(() => parseFilters(urlParams), [urlParams]);
+  const chips   = useMemo(() => describeFilters(filters), [filters]);
+  const active  = hasAnyFilter(filters);
 
   const [query,   setQuery]   = useState('');
-  const [aiQuery, setAiQuery] = useState('');
   const [results, setResults] = useState<Result[]>([]);
   const [open,    setOpen]    = useState(false);
   const [loading, setLoading] = useState(false);
-  const [aiActive, setAiActive] = useState(false);   // true when showing AI results
-
-  // Filters
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [fSource, setFSource] = useState<'all' | 'web' | 'teams'>('all');
-  const [fType,   setFType]   = useState<'all' | keyof typeof TYPE_LABELS>('all');
-  const [fDate,   setFDate]   = useState<'all' | 'week' | 'month'>('all');
 
   const debounceRef  = useRef<ReturnType<typeof setTimeout>>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const hasFilters = fSource !== 'all' || fType !== 'all' || fDate !== 'all';
+  /** Rewrite the URL with a new filter set, preserving the scope params the
+   *  dashboard owns (folder, org, team, assignee) and resetting pagination —
+   *  a narrower list should start at page one, not 90 rows in. */
+  const applyFilters = useCallback((next: Partial<RecordingFilters>, replaceAll = false) => {
+    const merged = replaceAll ? { ...filters, ...next } : { ...filters, ...next };
+    const sp = new URLSearchParams(urlParams.toString());
+    for (const k of FILTER_KEYS) sp.delete(k);
+    sp.delete('limit');
+    for (const [k, v] of Object.entries(filtersToParams(merged))) sp.set(k, v);
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [filters, urlParams, router, pathname]);
 
-  // Build the query string shared by normal + AI search. Company/assignee scope
-  // comes from the page's dropdown selection (URL); the panel owns source/type/date.
-  const buildParams = useCallback((term: string, ai: boolean) => {
-    const p = new URLSearchParams();
-    p.set('q', term);
-    if (ai) p.set('mode', 'ai');
-    if (fSource !== 'all') p.set('source', fSource);
-    if (fType   !== 'all') p.set('type', fType);
-    const from = dateFrom(fDate);
-    if (from) p.set('from', from);
-    // Pass through the active company / assignee scope from the dashboard URL
-    for (const k of ['org', 'team', 'assignee', 'source'] as const) {
-      const v = urlParams.get(k);
-      if (v && !p.has(k)) p.set(k, v);
-    }
-    return p.toString();
-  }, [fSource, fType, fDate, urlParams]);
+  /** Drop one chip. Clearing an AI filter clears everything it set, because the
+   *  parts of an AI filter are not separately meaningful. */
+  const removeChip = useCallback((keys: string[]) => {
+    const sp = new URLSearchParams(urlParams.toString());
+    for (const k of keys) sp.delete(k);
+    // Any hand-edit invalidates the AI filter's name.
+    if (!keys.includes('label')) sp.delete('label');
+    sp.delete('limit');
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [urlParams, router, pathname]);
 
-  const run = useCallback(async (term: string, ai: boolean) => {
+  const clearAll = useCallback(() => {
+    const sp = new URLSearchParams(urlParams.toString());
+    for (const k of FILTER_KEYS) sp.delete(k);
+    sp.delete('limit');
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [urlParams, router, pathname]);
+
+  // ── Quick-jump dropdown ────────────────────────────────────────────────────
+  // Carries the active filters so the dropdown and the list below always agree
+  // on what is in scope.
+  const runSearch = useCallback(async (term: string) => {
     if (term.trim().length < 2) { setResults([]); setOpen(false); return; }
     setLoading(true);
-    setAiActive(ai);
     try {
-      const res  = await fetch(`/api/search?${buildParams(term, ai)}`);
+      const p = new URLSearchParams(urlParams.toString());
+      p.set('q', term);
+      p.delete('limit');
+      const res  = await fetch(`/api/search?${p.toString()}`);
       const data = await res.json() as Result[];
       setResults(data);
       setOpen(true);
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [buildParams]);
+  }, [urlParams]);
 
-  // Debounced normal search on typing / filter change
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    if (query.length < 2) { setResults([]); setOpen(false); setAiActive(false); return; }
-    debounceRef.current = setTimeout(() => run(query, false), 350);
+    if (query.length < 2) { setResults([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(() => runSearch(query), 350);
     return () => clearTimeout(debounceRef.current);
-  }, [query, fSource, fType, fDate, run]);
+  }, [query, runSearch]);
 
   // Close popovers on outside click
   useEffect(() => {
@@ -104,112 +139,164 @@ export default function SearchBar({ canSeeAll = false }: { canSeeAll?: boolean }
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  const submitAi = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (aiQuery.trim().length < 2) return;
-    setFiltersOpen(false);
-    run(aiQuery, true);
-  };
+  // ── Ask AI ─────────────────────────────────────────────────────────────────
+  const askAi = useCallback(async () => {
+    const question = query.trim();
+    if (question.length < 2 || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    setOpen(false);
+    try {
+      const res = await fetch('/api/search/ai-filter', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ question }),
+      });
+      const data = await res.json() as { params?: Record<string, string>; error?: string };
+      if (!res.ok || !data.params) {
+        setAiError(data.error ?? "Couldn't interpret that — try rephrasing");
+        return;
+      }
+      const sp = new URLSearchParams(urlParams.toString());
+      for (const k of FILTER_KEYS) sp.delete(k);
+      sp.delete('limit');
+      for (const [k, v] of Object.entries(data.params)) sp.set(k, v);
+      const qs = sp.toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      setQuery('');
+      setFiltersOpen(false);
+    } catch {
+      setAiError('AI search is unavailable right now');
+    } finally {
+      setAiLoading(false);
+    }
+  }, [query, aiLoading, urlParams, router, pathname]);
 
-  const clearFilters = () => { setFSource('all'); setFType('all'); setFDate('all'); };
+  // The error is transient — it answers one click and then gets out of the way.
+  useEffect(() => {
+    if (!aiError) return;
+    const t = setTimeout(() => setAiError(null), 5000);
+    return () => clearTimeout(t);
+  }, [aiError]);
+
+  const canAsk = query.trim().length >= 2 && !aiLoading;
 
   return (
     <div ref={containerRef} className="relative w-full">
       <div className="relative">
-        <svg
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ftc-mid pointer-events-none"
-          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
-        </svg>
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ftc-mid pointer-events-none" />
         <input
-          type="search"
+          type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onFocus={() => results.length > 0 && !aiActive && setOpen(true)}
-          placeholder="Search meetings by title, transcript, notes…"
-          className="w-full pl-10 pr-20 py-2.5 text-sm text-ftc-gray bg-surface-card border border-surface-border
+          onFocus={() => results.length > 0 && setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') { setOpen(false); setFiltersOpen(false); }
+            // Enter on the search box asks AI — the dropdown is already live as
+            // you type, so the keystroke is free for the more useful action.
+            if (e.key === 'Enter') { e.preventDefault(); askAi(); }
+          }}
+          placeholder="Search meetings, or ask AI…"
+          className="w-full pl-10 pr-[8.5rem] py-2.5 text-sm text-ftc-gray bg-surface-card border border-surface-border
                      rounded-xl focus:outline-none focus:border-brand/50 transition-colors"
         />
-        {loading && (
-          <span className="absolute right-12 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-ftc-mid/30 border-t-ftc-mid animate-spin" />
-        )}
-        {/* Filter button */}
-        <button
-          type="button"
-          onClick={() => { setFiltersOpen(o => !o); setOpen(false); }}
-          aria-label="Filters"
-          className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
-            filtersOpen || hasFilters ? 'text-brand bg-brand/10' : 'text-ftc-mid hover:text-ftc-gray hover:bg-surface-raised'
-          }`}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 0a2 2 0 100 4 2 2 0 000-4zm-6 6v9m0-9a2 2 0 100 4 2 2 0 000-4zm0 0V3m12 0v9m0 0a2 2 0 100 4 2 2 0 000-4zm0 0V3" />
-          </svg>
-          {hasFilters && !filtersOpen && (
-            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-brand" />
+
+        {/* Inline controls, mirroring the CRM pipeline search bar */}
+        <div className="absolute right-2 inset-y-0 flex items-center gap-0.5">
+          {loading && (
+            <Loader2 className="w-3.5 h-3.5 mr-1 text-ftc-mid animate-spin" />
           )}
-        </button>
+          {query && !loading && (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setResults([]); setOpen(false); }}
+              title="Clear"
+              className="h-6 w-6 flex items-center justify-center rounded text-ftc-mid hover:text-ftc-gray transition-colors touch-manipulation"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={askAi}
+            disabled={!canAsk}
+            title="Ask AI — turn your search into a filter"
+            className={`relative h-6 flex items-center gap-1 rounded px-1.5 text-[11px] font-medium text-brand transition-colors touch-manipulation ${
+              canAsk ? 'hover:bg-brand/10' : 'opacity-70'
+            }`}
+          >
+            {aiLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            <span>Ask AI</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setFiltersOpen(o => !o); setOpen(false); }}
+            title="Filter"
+            aria-label="Filters"
+            className={`relative h-6 w-6 flex items-center justify-center rounded transition-colors touch-manipulation ${
+              filtersOpen || active ? 'text-brand' : 'text-ftc-mid hover:text-ftc-gray'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            {chips.length > 0 && (
+              <span className="absolute -top-1 -right-1 h-3.5 min-w-[0.875rem] px-0.5 rounded-full bg-brand text-white text-[8px] flex items-center justify-center font-bold">
+                {chips.length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
+
+      {aiError && (
+        <p className="mt-1.5 text-[11px] text-brand">{aiError}</p>
+      )}
+
+      {/* ── Active filters ── */}
+      {chips.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {chips.map(chip => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={() => removeChip(chip.keys)}
+              title="Remove filter"
+              className="group flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-lg text-[11px] font-medium
+                         bg-brand/10 text-brand hover:bg-brand/20 transition-colors touch-manipulation"
+            >
+              {chip.key === 'label' && <Sparkles className="w-3 h-3" />}
+              {chip.label}
+              <X className="w-3 h-3 opacity-60 group-hover:opacity-100" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-[11px] text-ftc-mid hover:text-ftc-gray transition-colors px-1.5 py-1"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
 
       {/* ── Filters panel ── */}
       {filtersOpen && (
         <div className="absolute top-full mt-1.5 right-0 z-40 w-80 rounded-2xl border border-surface-border bg-surface-card shadow-xl p-4 space-y-4 animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-widest text-ftc-mid">Filters</p>
-            {hasFilters && (
-              <button type="button" onClick={clearFilters} className="text-[11px] text-brand hover:underline">
+            {active && (
+              <button type="button" onClick={clearAll} className="text-[11px] text-brand hover:underline">
                 Clear
               </button>
             )}
           </div>
 
-          {/* Ask AI */}
-          <div>
-            <p className="flex items-center gap-1.5 text-xs font-medium text-ftc-gray mb-1.5">
-              <svg className="w-3.5 h-3.5 text-brand" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L23 12l-6.714 2.143L14 21l-2.286-6.857L5 12l6.714-2.143L14 3z" />
-              </svg>
-              Ask AI
-            </p>
-            <form onSubmit={submitAi} className="flex items-center gap-1.5">
-              <input
-                value={aiQuery}
-                onChange={e => setAiQuery(e.target.value)}
-                placeholder="e.g. meetings about pricing…"
-                className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg bg-surface-raised border border-surface-border text-ftc-gray placeholder:text-surface-muted focus:outline-none focus:border-brand"
-              />
-              <button
-                type="submit"
-                aria-label="Ask AI"
-                className="flex-shrink-0 p-2 rounded-lg bg-brand text-white hover:bg-brand/90 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L23 12l-6.714 2.143L14 21l-2.286-6.857L5 12l6.714-2.143L14 3z" />
-                </svg>
-              </button>
-            </form>
-          </div>
-
-          <div className="h-px bg-surface-border" />
-
           {/* Source */}
           <div>
             <p className="text-xs font-medium text-ftc-gray mb-1.5">Source</p>
             <div className="flex flex-wrap gap-1.5">
-              {(['all', 'web', 'teams'] as const).map(s => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setFSource(s)}
-                  className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                    fSource === s ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray bg-surface-raised'
-                  }`}
-                >
-                  {s === 'all' ? 'All' : s === 'web' ? 'In person' : 'Teams'}
-                </button>
-              ))}
+              <button type="button" onClick={() => applyFilters({ source: undefined, label: undefined })} className={chipClass(!filters.source)}>All</button>
+              <button type="button" onClick={() => applyFilters({ source: 'web',   label: undefined })} className={chipClass(filters.source === 'web')}>In person</button>
+              <button type="button" onClick={() => applyFilters({ source: 'teams', label: undefined })} className={chipClass(filters.source === 'teams')}>Online</button>
             </div>
           </div>
 
@@ -217,42 +304,37 @@ export default function SearchBar({ canSeeAll = false }: { canSeeAll?: boolean }
           <div>
             <p className="text-xs font-medium text-ftc-gray mb-1.5">Meeting type</p>
             <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => setFType('all')}
-                className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                  fType === 'all' ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray bg-surface-raised'
-                }`}
-              >
-                All
-              </button>
-              {Object.keys(TYPE_LABELS).map(t => (
+              <button type="button" onClick={() => applyFilters({ type: undefined, label: undefined })} className={chipClass(!filters.type)}>All</button>
+              {MEETING_TYPES.map(t => (
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setFType(t as keyof typeof TYPE_LABELS)}
-                  className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                    fType === t ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray bg-surface-raised'
-                  }`}
+                  onClick={() => applyFilters({ type: t as MeetingTypeFilter, label: undefined })}
+                  className={chipClass(filters.type === t)}
                 >
-                  {TYPE_LABELS[t]}
+                  {MEETING_TYPE_LABELS[t]}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Date range */}
+          {/* Date */}
           <div>
             <p className="text-xs font-medium text-ftc-gray mb-1.5">Date</p>
             <div className="flex flex-wrap gap-1.5">
-              {(['all', 'week', 'month'] as const).map(d => (
+              <button
+                type="button"
+                onClick={() => applyFilters({ date: undefined, from: undefined, to: undefined, label: undefined })}
+                className={chipClass(!filters.date && !filters.from && !filters.to)}
+              >
+                Any time
+              </button>
+              {(Object.keys(DATE_LABELS) as DateFilter[]).map(d => (
                 <button
                   key={d}
                   type="button"
-                  onClick={() => setFDate(d)}
-                  className={`text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                    fDate === d ? 'bg-brand text-white' : 'text-ftc-mid hover:text-ftc-gray bg-surface-raised'
-                  }`}
+                  onClick={() => applyFilters({ date: d, from: undefined, to: undefined, label: undefined })}
+                  className={chipClass(filters.date === d)}
                 >
                   {DATE_LABELS[d]}
                 </button>
@@ -260,25 +342,52 @@ export default function SearchBar({ canSeeAll = false }: { canSeeAll?: boolean }
             </div>
           </div>
 
+          {/* Sort */}
+          <div>
+            <p className="text-xs font-medium text-ftc-gray mb-1.5">Sort</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(Object.keys(SORT_LABELS) as SortFilter[]).map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => applyFilters({ sort: s, label: undefined })}
+                  className={chipClass(filters.sort === s)}
+                >
+                  {SORT_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Only meetings that produced follow-ups */}
+          <button
+            type="button"
+            onClick={() => applyFilters({ hasActions: !filters.hasActions, label: undefined })}
+            className="flex items-center gap-2 w-full text-left"
+          >
+            <span className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+              filters.hasActions ? 'bg-brand border-brand' : 'border-surface-border'
+            }`}>
+              {filters.hasActions && (
+                <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </span>
+            <span className="text-xs text-ftc-gray">Only meetings with action items</span>
+          </button>
+
           {canSeeAll && (
             <p className="text-[11px] text-surface-muted leading-relaxed">
-              Search is scoped to the Company / Assignee selected in the dropdowns above.
+              Filters apply on top of the Company / Assignee selected in the dropdowns above.
             </p>
           )}
         </div>
       )}
 
-      {/* ── Results dropdown ── */}
+      {/* ── Quick-jump results ── */}
       {open && (
         <div className="absolute top-full mt-1.5 left-0 right-0 z-30 rounded-2xl border border-surface-border bg-surface-card shadow-xl overflow-hidden animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
-          {aiActive && (
-            <div className="flex items-center gap-1.5 px-4 py-2 border-b border-surface-border text-[11px] font-medium text-brand">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L23 12l-6.714 2.143L14 21l-2.286-6.857L5 12l6.714-2.143L14 3z" />
-              </svg>
-              AI results
-            </div>
-          )}
           {results.length === 0 ? (
             <p className="text-xs text-ftc-mid px-4 py-3">No results found.</p>
           ) : (
@@ -293,7 +402,7 @@ export default function SearchBar({ canSeeAll = false }: { canSeeAll?: boolean }
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-medium text-ftc-gray truncate">{r.title}</span>
                       {r.source === 'teams' && (
-                        <span className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-[#4b53bc]/15 text-[#6264A7]">Teams</span>
+                        <span className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-[#4b53bc]/15 text-[#6264A7]">Online</span>
                       )}
                     </span>
                     {r.excerpt && (
